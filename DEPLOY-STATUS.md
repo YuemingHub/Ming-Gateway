@@ -72,6 +72,7 @@ systemctl disable --now api-gateway
 
 ## 变更记录
 
+- 2026-09-15：渠道**连通性测试 / 获取模型列表**在鉴权失败（401/403）时，会把**上游的原话**一并显示出来（此前一律翻译成「API Key 可能无效、过期或权限不足」，把上游信息吞掉了）。这样能一眼区分是密钥**类型/格式**不对还是过期失效——例如火山方舟分别会返回 `The API key format is incorrect` 与 `the API key or AK/SK in the request is missing or invalid`。
 - 2026-09-15：管理面登录用户名由默认 `admin` 改为自定义值（见服务器 `gateway.yaml` 的 `server.auth.username`），密码仍由 `.env` 的 `GATEWAY_ADMIN_PASSWORD` 提供。改动前的 `gateway.yaml` 与 `.env` 已在服务器同目录留备份 `*.bak-20260915*`。密码值不入库、也不写进本文件。
 
 ## 尚未做的事
