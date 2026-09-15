@@ -12,7 +12,7 @@
 | 服务器 | `39.107.228.76`（阿里云 cn-beijing） |
 | 对外入口 | `https://api.ymai.fun`（Nginx 反代，Let's Encrypt） |
 | 落地路径 | `/opt/api-gateway` |
-| 服务名 | `api-gateway.service`（systemd，enabled + active） |
+| 服务名 | `api-gateway.service`（systemd，enabled + active，以专用账号 `gwapp` 运行） |
 | 上游监听 | `127.0.0.1:8787`（**只回环，不对公网暴露**） |
 | 证书 | `/etc/letsencrypt/live/api.ymai.fun/`，仅此一域名，有效至 2026-12-14 |
 | 常驻内存 | 约 12 MB |
@@ -66,4 +66,15 @@ systemctl disable --now api-gateway
 
 ## 尚未做的事
 
-- 服务当前以 `root` 运行（沿用上线时指定的 unit 原文，未擅自改动）。改成专用账号属于权限模型变更，需另行确认后再做：新建系统账号、调整 `/opt/api-gateway` 属主权限、在 unit 中加 `User=` / `Group=` 并重启。此前尝试执行时被本机的安全策略拦下，未产生任何中间状态。
+- 暂无。
+
+## 运行身份与文件权限（2026-09-15 收紧）
+
+服务已**不再以 `root` 运行**，改用专用系统账号 `gwapp`（无登录 shell、无密码）：
+
+- `/opt/api-gateway` 目录 `750 root:gwapp`，代码文件 `640 root:gwapp`
+- `data/` 为 `gwapp:gwapp` `750`（用量日志、渠道库需要写）
+- `.env` 保持 `600 root:root`：**只有 systemd 能读**，服务进程自己都读不到
+- unit 里已加 `User=gwapp` / `Group=gwapp`；原始（root 版）unit 备份为 `/etc/systemd/system/api-gateway.service.bak-20260915-root`
+
+实测以 `gwapp` 身份无法读取 `/root/.ssh/authorized_keys`、`/etc/wireguard/server.key`，以及 family-os / world-space 的 `.env`——即网关万一被攻破，损失被限制在 `/opt/api-gateway` 内。
