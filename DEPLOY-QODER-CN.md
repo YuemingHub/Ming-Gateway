@@ -49,14 +49,14 @@ node gateway.js --check
 ```bash
 # —— 本地执行 ——
 # 方式 A：从 GitHub clone（注意：不含下面两个文件）
-# git clone https://github.com/<你的账号>/<仓库名>.git
+# git clone https://github.com/YuemingHub/Ming-Gateway.git
 
 # 方式 B：整目录打包上传（含 .env 与 gateway.yaml）
 tar czf api-gateway.tgz \
   --exclude=node_modules --exclude=data --exclude=.git \
   gateway.js lib web scripts test package.json README.md gateway.yaml .env
 
-scp api-gateway.tgz root@<服务器IP>:/tmp/
+scp api-gateway.tgz root@39.107.228.76:/tmp/
 ```
 
 ```bash
@@ -66,7 +66,7 @@ sudo tar xzf /tmp/api-gateway.tgz -C /opt/api-gateway
 cd /opt/api-gateway
 
 # 如果走的是 clone 方式，把两个缺失文件单独 scp 上来：
-# scp gateway.yaml .env root@<服务器IP>:/opt/api-gateway/
+# scp gateway.yaml .env root@39.107.228.76:/opt/api-gateway/
 
 chmod 600 gateway.yaml .env     # 密钥文件必须 600
 node -v                          # 必须 >= 18，不够先升级；不用 npm install
@@ -133,7 +133,7 @@ journalctl -u api-gateway -n 50 --no-pager
 
 ```bash
 sudo apt install -y nginx certbot python3-certbot-nginx    # Debian/Ubuntu
-sudo certbot --nginx -d <域名>
+sudo certbot --nginx -d ymai.fun
 ```
 
 站点配置（**重点看 `X-Forwarded-For` 与 `proxy_buffering off`**）：
@@ -141,10 +141,10 @@ sudo certbot --nginx -d <域名>
 ```nginx
 server {
     listen 443 ssl http2;
-    server_name <域名>;
+    server_name ymai.fun;
 
-    ssl_certificate     /etc/letsencrypt/live/<域名>/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/<域名>/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/ymai.fun/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/ymai.fun/privkey.pem;
 
     location / {
         proxy_pass http://127.0.0.1:8787;
@@ -170,7 +170,7 @@ server {
 
 server {
     listen 80;
-    server_name <域名>;
+    server_name ymai.fun;
     return 301 https://$host$request_uri;
 }
 ```
@@ -184,7 +184,7 @@ sudo nginx -t && sudo systemctl reload nginx
 ### 2.5 验收（服务器上跑一遍）
 
 ```bash
-DOMAIN=<域名>
+DOMAIN=ymai.fun
 TOKEN=<.env 里 GATEWAY_TOKEN_A 的值>
 
 # 1) 探活
@@ -216,7 +216,7 @@ curl -s -o /dev/null -w "%{http_code}\n" https://$DOMAIN/v1/chat/completions \
 # 期望 413
 ```
 
-浏览器打开 `https://<域名>/__gw/` → 应出现**登录页**（不是直接进状态页）→
+浏览器打开 `https://ymai.fun/__gw/` → 应出现**登录页**（不是直接进状态页）→
 用 `admin` + `GATEWAY_ADMIN_PASSWORD` 登录 → 右上角显示 admin。
 
 ---
@@ -228,7 +228,7 @@ curl -s -o /dev/null -w "%{http_code}\n" https://$DOMAIN/v1/chat/completions \
 
 【目标服务器】
 - 地址：39.107.228.76
-- 域名：ymai.love
+- 域名：ymai.fun
 - 系统：Linux（如不是 Linux 先告诉我，不要擅自换方案）
 - 规格：2 核 / 1.6G 内存（内存很紧张，不要装 Docker、数据库、Redis）
 
@@ -304,11 +304,11 @@ ExecStart 的 node 路径先用 which node 确认，不是 /usr/bin/node 就改�
 不要改 gateway.yaml 里的 server.host 为 0.0.0.0 —— 保持 127.0.0.1 + Nginx 更安全。
 
 【验收标准（逐条验证并把结果贴给我）】
-1. curl https://ymai.love/healthz                    → 返回 JSON 且含 "ok":true
-2. 浏览器打开 https://ymai.love/__gw/                 → 出现登录页（不是直接进状态页）
+1. curl https://ymai.fun/healthz                    → 返回 JSON 且含 "ok":true
+2. 浏览器打开 https://ymai.fun/__gw/                 → 出现登录页（不是直接进状态页）
 3. 用 admin + .env 里的 GATEWAY_ADMIN_PASSWORD 登录 → 能进状态页，右上角显示 admin
 4. 调一次真实接口（TOKEN 换成 .env 里 GATEWAY_TOKEN_A 的值）：
-   curl https://ymai.love/v1/chat/completions \
+   curl https://ymai.fun/v1/chat/completions \
      -H "Authorization: Bearer <GATEWAY_TOKEN_A>" -H "Content-Type: application/json" \
      -d '{"model":"deepseek-flash","messages":[{"role":"user","content":"只回复两个字：收到"}],"max_tokens":64}'
    → 200，且响应头含 X-GW-Channel: opencode-go
