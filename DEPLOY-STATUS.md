@@ -30,7 +30,7 @@
 
 1. `GET /healthz` → `{"ok":true,"version":"1.0.0"}`，HTTP 200
 2. `GET /__gw/` → 302 跳登录页，页面内无任何状态数据
-3. `admin` + `GATEWAY_ADMIN_PASSWORD` 登录 → 302 进状态页，显示 `admin`；会话 Cookie 带 `Secure`
+3. 用 `server.auth.username` + `.env` 的 `GATEWAY_ADMIN_PASSWORD` 登录 → 302 进状态页，右上角显示该用户名；会话 Cookie 带 `Secure`
 4. 带 `GATEWAY_TOKEN_A` 调用 `/v1/chat/completions` → 200，响应头 `X-GW-Channel: opencode-go`
 5. 不带令牌调用同一接口 → 401
 6. `"stream": true` → 分块逐条到达（时间戳递增），非一次性吐出
@@ -45,6 +45,10 @@ nginx -t && systemctl reload nginx
 systemctl disable --now api-gateway
 ```
 
+## 变更记录
+
+- 2026-09-15：管理面登录用户名由默认 `admin` 改为自定义值（见服务器 `gateway.yaml` 的 `server.auth.username`），密码仍由 `.env` 的 `GATEWAY_ADMIN_PASSWORD` 提供。改动前的 `gateway.yaml` 与 `.env` 已在服务器同目录留备份 `*.bak-20260915*`。密码值不入库、也不写进本文件。
+
 ## 尚未做的事
 
-- 服务当前以 `root` 运行（沿用上线时指定的 unit 原文，未擅自改动）。若要收紧，需另开一轮并同步处理 `/opt/api-gateway` 的文件属主。
+- 服务当前以 `root` 运行（沿用上线时指定的 unit 原文，未擅自改动）。改成专用账号属于权限模型变更，需另行确认后再做：新建系统账号、调整 `/opt/api-gateway` 属主权限、在 unit 中加 `User=` / `Group=` 并重启。此前尝试执行时被本机的安全策略拦下，未产生任何中间状态。
