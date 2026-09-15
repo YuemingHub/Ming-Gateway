@@ -1,0 +1,31 @@
+{
+  "name": "unified-api-gateway",
+  "version": "1.0.0",
+  "description": "轻量统一 LLM API 网关：A/B/C 分组管理、渠道互备、故障冷却、限流与预算熔断、SSE 零缓冲透传",
+  "main": "gateway.js",
+  "bin": {
+    "api-gateway": "./gateway.js"
+  },
+  "scripts": {
+    "start": "node gateway.js",
+    "check": "node gateway.js --check",
+    "test": "node test/smoke.js",
+    "test:ui": "node test/ui-e2e.js",
+    "demo": "node scripts/demo.js",
+    "test:harden": "node test/prod-hardening.js",
+    "test:real": "node test/real-upstream.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {},
+  "keywords": [
+    "api-gateway",
+    "llm",
+    "openai",
+    "proxy",
+    "reverse-proxy"
+  ],
+  "license": "MIT",
+  "private": true
+}
