@@ -45,6 +45,20 @@ nginx -t && systemctl reload nginx
 systemctl disable --now api-gateway
 ```
 
+## 分组与调用密钥
+
+网关按 A / B / C 三组隔离：**每组一把 KEY，每把 KEY 只能调它自己那组的模型**，跨组调用返回 503。
+
+| 组 | 渠道 | 可调模型（示例） |
+|---|---|---|
+| A 稳定开发 | OpenCode Go | `deepseek-flash`、`mimo-v2.5`、`glm-5.3-flash`、`qwen3.8-flash`、`minimax-m3` |
+| B 免费消耗 | Step、Agnes | `step-router-v1`、`step-3.7-flash`…；`agnes-3.0-flash`、`agnes-image-2.5-flash`、`agnes-video-2.5`… |
+| C 高配置 | （暂无渠道） | 暂无，调用返回 503 |
+
+- 调用地址 `https://api.ymai.fun/v1`，认证 `Authorization: Bearer <该组 KEY>`
+- 三把 KEY 存在服务器 `/opt/api-gateway/.env` 的 `GATEWAY_TOKEN_A/B/C`；**密钥值不入库、不写进本文件**
+- 2026-09-15 实测隔离：A KEY 调 B 组模型 503、B KEY 调 A 组模型 503、无令牌 401
+
 ## 变更记录
 
 - 2026-09-15：管理面登录用户名由默认 `admin` 改为自定义值（见服务器 `gateway.yaml` 的 `server.auth.username`），密码仍由 `.env` 的 `GATEWAY_ADMIN_PASSWORD` 提供。改动前的 `gateway.yaml` 与 `.env` 已在服务器同目录留备份 `*.bak-20260915*`。密码值不入库、也不写进本文件。
