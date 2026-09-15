@@ -57,6 +57,7 @@ systemctl disable --now api-gateway
 
 - 调用地址 `https://api.ymai.fun/v1`，认证 `Authorization: Bearer <该组 KEY>`
 - 三把 KEY 存在服务器 `/opt/api-gateway/.env` 的 `GATEWAY_TOKEN_A/B/C`；**密钥值不入库、不写进本文件**
+- 2026-09-15 起，状态页新增「我的令牌」面板（导航第 3 项）：登录后可直接查看/复制三把 KEY，默认打码、点「显示」展开。对应接口 `GET /__gw/api/tokens`，**需登录**，响应带 `no-store`
 - 2026-09-15 实测隔离：A KEY 调 B 组模型 503、B KEY 调 A 组模型 503、无令牌 401
 
 ## 变更记录
