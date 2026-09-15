@@ -113,7 +113,7 @@ GATEWAY_TOKEN_C=                    # C 组令牌：同上
 
 | 组 | 定位 | 典型成员 | 关键策略 |
 |---|---|---|---|
-| **A 稳定开发组** | 日常主力，性价比优先 | DeepSeek / GLM / 通义 / 豆包 / Kimi / Coding Plan | 多渠道权重互备、连续失败自动冷却（60s→900s 指数退避）、默认不限流 |
+| **A 稳定开发组** | 日常主力，性价比优先 | DeepSeek / GLM / 通义 / 豆包 / Kimi / Coding Plan | 多渠道**顺序互备**（组内从上往下依次消耗）、连续失败自动冷却（60s→900s 指数退避）、默认不限流 |
 | **B 免费消耗组** | 免费或极低成本，兜底 | 硅基流动免费模型 / Cloudflare Workers AI / 本地 Ollama | A 组全挂时自动降级、默认开启缓存 |
 | **C 高配置组** | 昂贵模型，严格控本 | GPT-4o / o1 / Claude Opus·Sonnet | **永不被动进入**、`日/月预算熔断`、`RPM+TPM 双桶限流`、`强制缓存`、逐次计成本 |
 
@@ -248,8 +248,9 @@ curl http://127.0.0.1:8787/v1/chat/completions \
   baseUrl: https://api.deepseek.com/v1
   apiKey: ${DEEPSEEK_API_KEY}      # 支持环境变量，别把 Key 写进文件
   models: [deepseek-chat, deepseek-reasoner]
-  weight: 100               # 同优先级内的权重，越大越容易被选中
-  priority: 10              # 数字越小越优先
+  order: 0                  # 组内消耗顺序（0 起，数字小者先被使用）；不写则排在所属组末尾
+  weight: 100               # 已不参与排序，仅作兼容保留
+  priority: 10              # 已不参与排序，仅作兼容保留
   enabled: true
   cooldown:
     baseSec: 60             # 连续失败 3 次起冷却，按 2^n 退避
@@ -333,6 +334,7 @@ curl http://127.0.0.1:8787/v1/chat/completions \
 | `POST /__gw/api/channel/save` | 新增或更新渠道（`originalId` 不同即为改 id；`apiKey` 留空表示不改） |
 | `POST /__gw/api/channel/delete` | 删除渠道 `{"id":"x"}` |
 | `POST /__gw/api/channel/toggle` | 启用/停用渠道 `{"id":"x","enabled":false}`（会落盘） |
+| `POST /__gw/api/channel/reorder` | 调整组内**消耗顺序** `{"group":"A","ids":["a1","a2","a3"]}` —— `ids` 必须是该组全部渠道的新顺序，落盘并热更新；状态页列表里的 ▲▼ 就是调它 |
 | `POST /__gw/api/channel/test` | 连通性测试 `{"id":"x"}` 或 `{"channel":{...}}`，失败也返回 200，原因在 `message`；**顺带把上游模型清单一起带回**（`models` 字段） |
 | `POST /__gw/api/models/fetch` | 一键获取模型列表 `{"id":"x"}` 或 `{"channel":{...}}`，返回 `{ok,models,count,via,status,latencyMs,message}` |
 | `POST /__gw/api/channel/reset` | 丢弃 `data/channels.json`，回到 `gateway.yaml` 基线（自动备份为 `.bak`） |

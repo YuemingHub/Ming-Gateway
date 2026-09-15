@@ -526,7 +526,7 @@
           <tr>
             <th>渠道名</th><th>组</th><th>厂商</th><th>plan</th><th>模型</th>
             <th>健康状态</th><th class="num">成功率</th><th class="num">平均延迟</th>
-            <th class="num">请求数</th><th class="num">成本</th><th class="num">权重</th>
+            <th class="num">请求数</th><th class="num">成本</th><th class="num">顺序</th>
             <th class="num">并发中</th><th>最近错误</th><th>操作</th>
           </tr>
         </thead>
@@ -696,13 +696,13 @@
             <div class="fitem">
               <label class="flabel" for="f_weight">权重 weight</label>
               <input type="number" id="f_weight" min="0" step="1" value="100" />
-              <span class="fhint">同优先级内按权重分流，越大分到的请求越多。</span>
+              <span class="fhint">已不参与排序：消耗顺序由列表里的「顺序」列决定，此项仅作兼容保留。</span>
               <span class="ferr" id="e_weight"></span>
             </div>
             <div class="fitem">
               <label class="flabel" for="f_priority">优先级 priority</label>
               <input type="number" id="f_priority" min="0" step="1" value="100" />
-              <span class="fhint">数字越小越优先被选用。</span>
+              <span class="fhint">已不参与排序：消耗顺序由列表里的「顺序」列决定，此项仅作兼容保留。</span>
               <span class="ferr" id="e_priority"></span>
             </div>
             <div class="fitem">
@@ -761,6 +761,7 @@
   var URL_CHANNELS      = API_BASE + "/api/channels";
   var URL_CHANNEL_SAVE  = API_BASE + "/api/channel/save";
   var URL_CHANNEL_DEL   = API_BASE + "/api/channel/delete";
+  var URL_CHANNEL_ORDER = API_BASE + "/api/channel/reorder";
   var URL_CHANNEL_TEST  = API_BASE + "/api/channel/test";
   var URL_MODELS_FETCH  = API_BASE + "/api/models/fetch";
   var URL_META          = API_BASE + "/api/meta";
@@ -809,7 +810,8 @@
     firstLoadDone: false,
     errorMsg: "",
     lastUpdated: null,
-    tokens: null
+    tokens: null,
+    reordering: false
   };
   /* 哪些令牌被点开显示过 —— 放在 state 外面，自动刷新时不会被重置回打码 */
   var revealedTokens = {};
@@ -1122,9 +1124,11 @@
       var ga = GROUP_ORDER[a.group] === undefined ? 99 : GROUP_ORDER[a.group];
       var gb = GROUP_ORDER[b.group] === undefined ? 99 : GROUP_ORDER[b.group];
       if (ga !== gb) return ga - gb;
-      var pa = num(a.priority), pb = num(b.priority);
-      if (pa !== pb) return pa - pb;
-      return num(b.weight) - num(a.weight);
+      // 组内按「消耗顺序」排：列表里从上往下就是这个顺序，与网关实际挑渠道的顺序一致
+      var oa = typeof a.order === "number" ? a.order : 9999;
+      var ob = typeof b.order === "number" ? b.order : 9999;
+      if (oa !== ob) return oa - ob;
+      return String(a.id).localeCompare(String(b.id));
     });
     return list;
   }
@@ -1240,6 +1244,43 @@
     fallback();
   }
 
+  /* 调整某条渠道在它所属组内的消耗顺序：delta = -1 上移（更早被使用）/ +1 下移。
+     服务端要求提交「该组全部渠道」的新顺序，所以这里从原始数据重建整组列表 ——
+     不能用 visibleChannels()，那是被搜索/分组筛选过的子集，会漏掉被隐藏的渠道。 */
+  async function moveChannel(id, delta) {
+    if (state.reordering) return;
+    var all = (state.status && Array.isArray(state.status.channels)) ? state.status.channels : [];
+    var target = null;
+    for (var k = 0; k < all.length; k++) {
+      if (all[k].id === id) { target = all[k]; break; }
+    }
+    if (!target) return;
+
+    var group = target.group;
+    var ids = all.filter(function (c) { return c.group === group; })
+      .sort(function (a, b) { return num(a.order) - num(b.order); })
+      .map(function (c) { return c.id; });
+
+    var i = ids.indexOf(id);
+    var j = i + delta;
+    if (i < 0 || j < 0 || j >= ids.length) return;
+
+    ids[i] = ids[j];
+    ids[j] = id;
+
+    state.reordering = true;
+    try {
+      var r = await apiPostJson(URL_CHANNEL_ORDER, { group: group, ids: ids });
+      if (r && r.ok === false) { toast(r.error || "调整顺序失败", "err"); return; }
+      toast("已保存：" + group + " 组里它现在排第 " + (j + 1) + " 位", "ok");
+      await refresh(true);
+    } catch (e) {
+      toast("调整顺序失败：" + ((e && e.message) || "未知错误"), "err");
+    } finally {
+      state.reordering = false;
+    }
+  }
+
   function renderChannels() {
     var list = visibleChannels();
     var body = $("bodyChannels");
@@ -1277,7 +1318,11 @@
         '<td class="num">' + (num(st.avgLatencyMs) > 0 ? fmtMs(st.avgLatencyMs) : "—") + '</td>' +
         '<td class="num">' + fmtInt(st.total) + '</td>' +
         '<td class="num">' + fmtUSD(st.costUSD) + '</td>' +
-        '<td class="num muted">' + fmtInt(c.weight) + '</td>' +
+        '<td class="num"><div class="rowacts" style="justify-content:center;gap:4px">' +
+          '<b title="' + esc(c.group) + ' 组内第 ' + (num(c.order) + 1) + ' 顺位">' + (num(c.order) + 1) + '</b>' +
+          '<button class="sm" data-up="' + esc(c.id) + '" title="上移一位（更早被使用）">▲</button>' +
+          '<button class="sm" data-down="' + esc(c.id) + '" title="下移一位（更晚被使用）">▼</button>' +
+        '</div></td>' +
         '<td class="num">' + (num(c.inflight) > 0 ? '<b style="color:var(--blue)">' + fmtInt(c.inflight) + '</b>' : '<span class="muted">0</span>') + '</td>' +
         '<td>' + errCell + '</td>' +
         '<td><div class="rowacts">' +
@@ -1301,6 +1346,12 @@
     });
     Array.prototype.forEach.call(body.querySelectorAll("button[data-del]"), function (btn) {
       btn.onclick = function () { deleteChannel(btn.getAttribute("data-del"), btn.getAttribute("data-name")); };
+    });
+    Array.prototype.forEach.call(body.querySelectorAll("button[data-up]"), function (btn) {
+      btn.onclick = function () { moveChannel(btn.getAttribute("data-up"), -1); };
+    });
+    Array.prototype.forEach.call(body.querySelectorAll("button[data-down]"), function (btn) {
+      btn.onclick = function () { moveChannel(btn.getAttribute("data-down"), 1); };
     });
   }
 
