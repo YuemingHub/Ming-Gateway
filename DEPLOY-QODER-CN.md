@@ -227,8 +227,8 @@ curl -s -o /dev/null -w "%{http_code}\n" https://$DOMAIN/v1/chat/completions \
 请帮我把一个「零依赖 Node.js 的 LLM API 网关」部署到服务器。严格按下面的要求做，不要自由发挥改代码。
 
 【目标服务器】
-- 地址：[服务器 IP]
-- 域名：[域名]
+- 地址：39.107.228.76
+- 域名：ymai.love
 - 系统：Linux（如不是 Linux 先告诉我，不要擅自换方案）
 - 规格：2 核 / 1.6G 内存（内存很紧张，不要装 Docker、数据库、Redis）
 
@@ -304,11 +304,11 @@ ExecStart 的 node 路径先用 which node 确认，不是 /usr/bin/node 就改�
 不要改 gateway.yaml 里的 server.host 为 0.0.0.0 —— 保持 127.0.0.1 + Nginx 更安全。
 
 【验收标准（逐条验证并把结果贴给我）】
-1. curl https://[域名]/healthz                    → 返回 JSON 且含 "ok":true
-2. 浏览器打开 https://[域名]/__gw/                 → 出现登录页（不是直接进状态页）
+1. curl https://ymai.love/healthz                    → 返回 JSON 且含 "ok":true
+2. 浏览器打开 https://ymai.love/__gw/                 → 出现登录页（不是直接进状态页）
 3. 用 admin + .env 里的 GATEWAY_ADMIN_PASSWORD 登录 → 能进状态页，右上角显示 admin
 4. 调一次真实接口（TOKEN 换成 .env 里 GATEWAY_TOKEN_A 的值）：
-   curl https://[域名]/v1/chat/completions \
+   curl https://ymai.love/v1/chat/completions \
      -H "Authorization: Bearer <GATEWAY_TOKEN_A>" -H "Content-Type: application/json" \
      -d '{"model":"deepseek-flash","messages":[{"role":"user","content":"只回复两个字：收到"}],"max_tokens":64}'
    → 200，且响应头含 X-GW-Channel: opencode-go

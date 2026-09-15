@@ -1,0 +1,111 @@
+【怎么用】从下面那排 ===== 开始，一直选到文件最后，全部复制，粘给 Qoder CN。
+          上面这三行不用复制。
+
+================================================
+
+请帮我把一个「零依赖 Node.js 的 LLM API 网关」部署到服务器。严格按下面的要求做，不要自由发挥改代码。
+
+【目标服务器】
+- 地址：39.107.228.76
+- 域名：ymai.love
+- 系统：Linux（如不是 Linux 先告诉我，不要擅自换方案）
+- 规格：2 核 / 1.6G 内存（内存很紧张，不要装 Docker、数据库、Redis）
+
+【项目是什么】
+- Node.js 内置模块写的 HTTP 反向代理网关，把多个大模型厂商的 API 聚合成一个 OpenAI 兼容端点。
+- 零 npm 依赖：不需要 npm install，直接 node gateway.js 就能跑。
+- 内存约 40–60MB，常驻内存态（限流/冷却/缓存都在进程内，不需要外部存储）。
+- 入口 gateway.js，代码在 lib/，状态页 web/dashboard.html。
+
+【需要上传哪些文件】
+整个项目目录。但特别注意：gateway.yaml 和 .env 被 .gitignore 忽略，
+从 git clone 下来是没有的，必须单独上传（这两个文件我会在本地填好给你）。
+建议部署到 /opt/api-gateway，并 chmod 600 gateway.yaml .env
+
+【环境】
+- Node.js >= 18（推荐 20/22），先 node -v 确认，不够就先升级。
+- 不需要 npm install，不需要构建步骤。
+
+【启动方式】
+systemd 托管，/etc/systemd/system/api-gateway.service：
+
+[Unit]
+Description=Unified API Gateway
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/api-gateway
+ExecStart=/usr/bin/node gateway.js
+Restart=always
+RestartSec=3
+EnvironmentFile=/opt/api-gateway/.env
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+
+ExecStart 的 node 路径先用 which node 确认，不是 /usr/bin/node 就改成实际路径。
+然后 systemctl daemon-reload && systemctl enable --now api-gateway，
+并确认 systemctl status api-gateway 是 active (running)。
+启动失败请把 journalctl -u api-gateway -n 50 的原文给我，不要自己改代码"修"。
+
+【HTTPS 之后必须改的两个配置】
+编辑 /opt/api-gateway/gateway.yaml（改前先 cp gateway.yaml gateway.yaml.bak）：
+  1. server.auth.cookieSecure: false → true
+     不改会出现「密码输对了、提示登录成功、又跳回登录页」
+  2. server.auth.trustProxy: false → true
+     走反代后网关看到的地址永远是 127.0.0.1，不开的话所有外部来源会被算成同一个 IP，
+     一个人输错 8 次密码会把所有人的登录锁住 10 分钟。
+     开了之后 Nginx 必须真的传 X-Forwarded-For，否则等于没开。
+改完 systemctl restart api-gateway。
+
+【Nginx：必须走 HTTPS 反向代理】
+网关默认只监听 127.0.0.1:8787，请用 Nginx + Let's Encrypt 做反向代理。
+站点配置里必须包含这些（前两个是真实 IP，后一组是流式必需的）：
+
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header Host              $host;
+
+    proxy_buffering off;          # 否则 SSE 流式会被攒着一次性吐出
+    proxy_cache off;
+    proxy_read_timeout 300s;
+    chunked_transfer_encoding on;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+
+    client_max_body_size 16m;     # 与 gateway.yaml 的 server.maxBodyBytes 保持一致
+
+防火墙只开 80/443，不要对外暴露 8787。
+不要改 gateway.yaml 里的 server.host 为 0.0.0.0 —— 保持 127.0.0.1 + Nginx 更安全。
+
+【验收标准（逐条验证并把结果贴给我）】
+1. curl https://ymai.love/healthz                    → 返回 JSON 且含 "ok":true
+2. 浏览器打开 https://ymai.love/__gw/                 → 出现登录页（不是直接进状态页）
+3. 用 admin + .env 里的 GATEWAY_ADMIN_PASSWORD 登录 → 能进状态页，右上角显示 admin
+4. 调一次真实接口（TOKEN 换成 .env 里 GATEWAY_TOKEN_A 的值）：
+   curl https://ymai.love/v1/chat/completions \
+     -H "Authorization: Bearer <GATEWAY_TOKEN_A>" -H "Content-Type: application/json" \
+     -d '{"model":"deepseek-flash","messages":[{"role":"user","content":"只回复两个字：收到"}],"max_tokens":64}'
+   → 200，且响应头含 X-GW-Channel: opencode-go
+5. 不带令牌调同一个接口                            → 必须 401
+6. 流式请求（加 "stream": true）                   → 边收边出，不是等几秒一次性吐完
+7. 发一个 20MB 的超大请求体                        → 必须 413（不是 500，也不是挂住）
+
+【不要做的事】
+- 不要改 lib/ 或 gateway.js 里的任何代码（除非有明确启动报错，那也先告诉我）
+- 不要把 .env、gateway.yaml 提交进任何 git 仓库，也不要打印到日志
+- 不要安装 Docker / Redis / 数据库
+- 不要顺手"优化"配置里的超时、重试、限流参数
+  （requestTimeoutMs 是整体超时、maxBodyBytes 是请求体上限，都是有意设定的）
+- 不要对外暴露 8787 端口
+
+【已知的正常信息，不用当错误处理】
+- 启动若打印「这些渠道的密钥引用了环境变量，但没读到值」→ .env 没传上去或 EnvironmentFile 路径不对
+- /healthz 不需要登录，这是故意的（给探活用）
+
+【如果卡住】
+把报错原文（systemctl status / journalctl 最后 50 行）贴给我，我来判断，不要自行改代码绕过。
