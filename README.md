@@ -1,5 +1,7 @@
 # 统一 API 网关（Unified API Gateway）
 
+> 仓库：[github.com/YuemingHub/Ming-Gateway](https://github.com/YuemingHub/Ming-Gateway)
+
 把所有零散的大模型 API 收拢到一个入口，分三组管理，故障自动切换，成本看得见。
 
 **零依赖 · 单进程 · 单文件配置**。只用 Node 内置模块（http / crypto / fs），不需要 `npm install`，不需要数据库，不需要 Redis。
@@ -19,6 +21,10 @@
 ## 快速开始
 
 ```bash
+# 0. 获取代码（零依赖，不需要 npm install）
+git clone https://github.com/YuemingHub/Ming-Gateway.git
+cd Ming-Gateway
+
 # 1. 生成配置（真实 Key 建议走环境变量）
 cp gateway.example.yaml gateway.yaml
 cp .env.example .env       # 然后填里面的密钥，见下方「登录与密钥」
