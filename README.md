@@ -327,6 +327,7 @@ curl http://127.0.0.1:8787/v1/chat/completions \
 |---|---|
 | `GET /__gw/` | 状态页（单文件 HTML，无外部资源） |
 | `GET /__gw/api/status` | 网关总状态：分组、渠道、健康度、用量、预算、缓存 |
+| `GET /__gw/api/tokens` | 客户端令牌列表：分组、名称、启用状态、掩码值与**完整值**（供复制进调用方；页面默认打码，点「显示」展开，响应带 `no-store`） |
 | `GET /__gw/api/channels` | 渠道列表（密钥以掩码形式返回）+ 当前来源（`store` / `yaml`） |
 | `GET /__gw/api/meta` | 新增表单所需的选项：分组、厂商协议、套餐类型、9 个厂商预设 |
 | `POST /__gw/api/channel/save` | 新增或更新渠道（`originalId` 不同即为改 id；`apiKey` 留空表示不改） |

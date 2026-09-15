@@ -460,6 +460,7 @@
   <nav class="nav" id="navBar">
     <a href="#sec-overview" data-sec="sec-overview">总览</a>
     <a href="#sec-groups" data-sec="sec-groups">渠道分组</a>
+    <a href="#sec-tokens" data-sec="sec-tokens">我的令牌</a>
     <a href="#sec-channels" data-sec="sec-channels">渠道列表</a>
     <a href="#sec-usage" data-sec="sec-usage">用量统计</a>
     <a href="#sec-logs" data-sec="sec-logs">请求日志</a>
@@ -482,6 +483,25 @@
       <span class="sub" id="policyInfo"></span>
     </div>
     <div class="groups" id="groups"></div>
+  </section>
+
+  <!-- 3.5 我的令牌：调用本网关用的 KEY，每组一把，只能调本组模型 -->
+  <section id="sec-tokens">
+    <div class="sec-head">
+      <h2>我的令牌</h2>
+      <span class="sub" id="tkHint"></span>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th>组</th><th>用途</th><th>KEY（默认打码）</th><th>状态</th><th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="bodyTokens"></tbody>
+      </table>
+    </div>
+    <div id="tkNotice"></div>
   </section>
 
   <!-- 4. 渠道表格 -->
@@ -744,6 +764,7 @@
   var URL_CHANNEL_TEST  = API_BASE + "/api/channel/test";
   var URL_MODELS_FETCH  = API_BASE + "/api/models/fetch";
   var URL_META          = API_BASE + "/api/meta";
+  var URL_TOKENS        = API_BASE + "/api/tokens";
 
   var POLL_MS = 5000;
   var MAX_ROWS = 200;
@@ -787,8 +808,11 @@
     connected: false,
     firstLoadDone: false,
     errorMsg: "",
-    lastUpdated: null
+    lastUpdated: null,
+    tokens: null
   };
+  /* 哪些令牌被点开显示过 —— 放在 state 外面，自动刷新时不会被重置回打码 */
+  var revealedTokens = {};
   var pollTimer = null;
 
   /* ============ 工具函数 ============ */
@@ -902,7 +926,7 @@
     btn.innerHTML = '<span class="spin"></span> 刷新中';
 
     try {
-      var r = await Promise.allSettled([apiGet(URL_STATUS), apiGet(URL_LOGS)]);
+      var r = await Promise.allSettled([apiGet(URL_STATUS), apiGet(URL_LOGS), apiGet(URL_TOKENS)]);
       var okAny = false;
 
       if (r[0].status === "fulfilled" && r[0].value && r[0].value.ok !== false) {
@@ -915,6 +939,11 @@
       if (r[1].status === "fulfilled" && r[1].value && r[1].value.ok !== false) {
         state.logs = Array.isArray(r[1].value.logs) ? r[1].value.logs : [];
         okAny = true;
+      }
+
+      // 令牌面板是辅助信息：取不到只让那一块显示提示，不影响整页「已连接」判定
+      if (r[2] && r[2].status === "fulfilled" && r[2].value && r[2].value.ok !== false) {
+        state.tokens = Array.isArray(r[2].value.tokens) ? r[2].value.tokens : [];
       }
 
       state.connected = okAny;
@@ -1116,6 +1145,101 @@
       ' <span class="badge info">+' + (ms.length - 3) + '</span></span>';
   }
 
+  /* ============ 渲染：我的令牌 ============ */
+  function renderTokens() {
+    var body = $("bodyTokens");
+    if (!body) return;
+    var hint = $("tkHint");
+    var list = state.tokens;
+
+    if (!list) {
+      if (hint) hint.textContent = "";
+      body.innerHTML = '<tr><td colspan="5"><div class="empty">取不到令牌列表（接口不可用，或会话已过期）</div></td></tr>';
+      return;
+    }
+
+    if (hint) {
+      hint.textContent = "调用地址 " + (location.origin || "") + "/v1　认证：Authorization: Bearer <该组 KEY>";
+    }
+
+    if (!list.length) {
+      body.innerHTML = '<tr><td colspan="5"><div class="empty">还没有配置任何客户端令牌</div></td></tr>';
+      return;
+    }
+
+    body.innerHTML = list.map(function (t) {
+      var gs = (t.groups && t.groups.length) ? t.groups : ["全组"];
+      var chips = gs.map(function (g) {
+        return '<span class="gkey ' + esc(g) + '">' + esc(g) + '</span>';
+      }).join(" ");
+      var shown = !!revealedTokens[t.index];
+      var keyCell = shown
+        ? '<code class="mono" style="word-break:break-all;user-select:all">' + esc(t.key) + '</code>'
+        : '<code class="mono muted">' + esc(t.keyMasked || "（空）") + '</code>';
+      var stCell = t.enabled === false
+        ? '<span class="muted">未启用</span>'
+        : '<span style="color:var(--green)">启用</span>';
+
+      return '<tr>' +
+        '<td>' + chips + '</td>' +
+        '<td>' + esc(t.name || "") + '</td>' +
+        '<td>' + keyCell + '</td>' +
+        '<td>' + stCell + '</td>' +
+        '<td><div class="rowacts">' +
+          '<button class="sm" data-reveal="' + t.index + '">' + (shown ? "隐藏" : "显示") + '</button>' +
+          '<button class="sm primary" data-copy="' + t.index + '"' + (t.key ? "" : " disabled") + '>复制</button>' +
+        '</div></td>' +
+        '</tr>';
+    }).join("");
+
+    Array.prototype.forEach.call(body.querySelectorAll("button[data-reveal]"), function (btn) {
+      btn.onclick = function () {
+        var i = btn.getAttribute("data-reveal");
+        revealedTokens[i] = !revealedTokens[i];
+        renderTokens();
+      };
+    });
+    Array.prototype.forEach.call(body.querySelectorAll("button[data-copy]"), function (btn) {
+      btn.onclick = function () {
+        var t = (state.tokens || [])[Number(btn.getAttribute("data-copy"))];
+        if (t) copyText(t.key, btn);
+      };
+    });
+  }
+
+  /* 复制到剪贴板：优先用 clipboard API；http 回环访问时它不可用，
+     所以退回 textarea + execCommand 这条老路，保证两种访问方式都能复制。 */
+  function copyText(text, btn) {
+    function done(ok) {
+      toast(ok ? "已复制到剪贴板" : "复制失败，请点「显示」后手动选中复制", ok ? "ok" : "err");
+      if (!btn) return;
+      var old = btn.textContent;
+      btn.textContent = ok ? "已复制" : "失败";
+      setTimeout(function () { btn.textContent = old; }, 1200);
+    }
+    function fallback() {
+      try {
+        var ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.top = "-1000px";
+        document.body.appendChild(ta);
+        ta.select();
+        var ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        done(!!ok);
+      } catch (e) {
+        done(false);
+      }
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { done(true); }, fallback);
+      return;
+    }
+    fallback();
+  }
+
   function renderChannels() {
     var list = visibleChannels();
     var body = $("bodyChannels");
@@ -1280,6 +1404,7 @@
     renderAlert();
     renderKpis();
     renderGroups();
+    renderTokens();
     renderChannels();
     renderUsage();
     renderLogs();
