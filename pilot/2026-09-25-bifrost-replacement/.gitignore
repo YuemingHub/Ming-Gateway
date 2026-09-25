@@ -1,0 +1,11 @@
+# pilot runtime artifacts are local-only; committed evidence is text/JSON under raw/
+.tmp/
+bifrost-app/
+gateway-local/data/
+*.log
+*.db
+*.db-wal
+*.db-shm
+mock-state.json
+mock-requests.jsonl
+node_modules/

@@ -1,0 +1,93 @@
+# Sanitized local Ming-Gateway instance for the replacement pilot.
+# All upstreams point at the local mock (127.0.0.1:18080); keys are dummies.
+# Mirrors the same A/B/C shape as the Bifrost fixture.
+
+server:
+  host: 127.0.0.1
+  port: 18787
+  adminToken: ""
+  requestTimeoutMs: 30000
+  connectTimeoutMs: 5000
+  maxRetries: 2
+  retryOnStatus: [408, 409, 429, 500, 502, 503, 504]
+  logLevel: info
+  dataDir: ./data
+
+cache:
+  enabled: false
+
+fallback:
+  enabled: true
+  chain: [A, B]
+  crossGroup: true
+
+groups:
+  A:
+    name: A stable
+    requireExplicit: false
+    limits: { rpm: 0, tpm: 0, concurrency: 0 }
+    cache: { enabled: false }
+  B:
+    name: B free
+    requireExplicit: false
+    limits: { rpm: 0, tpm: 0, concurrency: 0 }
+    cache: { enabled: false }
+  C:
+    name: C expensive
+    requireExplicit: true
+    limits: { rpm: 0, tpm: 0, concurrency: 0 }
+    cache: { enabled: false }
+
+tokens:
+  - key: sk-test-a-strict
+    name: A strict
+    allowGroups: [A]
+  - key: sk-test-ab
+    name: A then B
+    allowGroups: [A, B]
+  - key: sk-test-b
+    name: B only
+    allowGroups: [B]
+  - key: sk-test-c
+    name: C explicit
+    allowGroups: [C]
+
+channels:
+  - id: mock-a1
+    name: mock a1
+    group: A
+    provider: openai
+    baseUrl: http://127.0.0.1:18080/v1
+    apiKey: sk-mock-a1
+    models: [mock-small, mock-large]
+    order: 0
+    cooldown: { baseSec: 60, maxSec: 900, failThreshold: 3 }
+  - id: mock-a2
+    name: mock a2
+    group: A
+    provider: openai
+    baseUrl: http://127.0.0.1:18080/v1
+    apiKey: sk-mock-a2
+    models: [mock-small, mock-large]
+    order: 1
+    cooldown: { baseSec: 60, maxSec: 900, failThreshold: 3 }
+  - id: mock-b1
+    name: mock b1
+    group: B
+    provider: openai
+    baseUrl: http://127.0.0.1:18080/v1
+    apiKey: sk-mock-b1
+    models: [mock-small, mock-large]
+    order: 0
+    cooldown: { baseSec: 60, maxSec: 900, failThreshold: 3 }
+  - id: mock-c1
+    name: mock c1
+    group: C
+    provider: openai
+    baseUrl: http://127.0.0.1:18080/v1
+    apiKey: sk-mock-c1
+    models: [mock-small, mock-large]
+    order: 0
+    cooldown: { baseSec: 60, maxSec: 900, failThreshold: 3 }
+
+pricing: {}

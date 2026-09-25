@@ -1,0 +1,171 @@
+
+===== T01 — OpenAI-compatible non-stream call (provider/model form) =====
+  expected : HTTP 200 with OpenAI-shaped body, served by mock-a1/a1-primary
+  observed : HTTP 200, 4ms, content="mock-answer key=sk-mock-a1 model=mock-small n=1", routing={"provider":"mock-a1","model":"mock-small","key":"a1-primary"}
+  verdict  : PASS
+
+===== T02 — OpenAI-compatible call with BARE model name (Ming-Gateway calling convention) =====
+  expected : Ming-Gateway callers send bare model names; with a routing rule pinning the provider this should still work
+  observed : HTTP 200, routed={"provider":"mock-a1","model":"mock-small","key":"a1-primary"}
+  verdict  : PASS
+
+===== T03 — Bare model name WITHOUT routing rule (Ming-Gateway callers unchanged) =====
+  expected : Bare model resolves through the model catalog across the allowed provider set (first provider preferred)
+  observed : HTTP 200, routed={"provider":"mock-a1","model":"mock-small","key":"a1-primary"}
+  notes    : No caller-side model renaming needed; provider is chosen from the VK-scoped allowed set.
+  verdict  : PASS
+
+===== T10 — Isolation: A-only VK (no rule) → B provider must be denied =====
+  expected : Denied (provider not in this VK's provider_configs)
+  observed : HTTP 403 — provider_blocked
+  verdict  : PASS
+
+===== T11 — Isolation: A-only VK (no rule) → C provider must be denied =====
+  expected : Denied
+  observed : HTTP 403 — provider_blocked
+  verdict  : PASS
+
+===== T12 — Isolation: B VK → A provider must be denied =====
+  expected : Denied
+  observed : HTTP 403 — provider_blocked
+  verdict  : PASS
+
+===== T13 — Isolation: A VK → asked for C provider (no routing rules active) =====
+  expected : Explicit refusal (403 provider_blocked), same semantics as a strict Ming-Gateway token
+  observed : HTTP 403 — provider_blocked, routed={}
+  verdict  : PASS
+
+===== T14 — Isolation: C VK → asked for A provider (no routing rules active) =====
+  expected : Explicit refusal; must never reach A
+  observed : HTTP 403 — provider_blocked, routed={}
+  verdict  : PASS
+
+===== T20 — C group NEVER implicit fallback: C upstream down → C VK must fail, A/B untouched =====
+  expected : Failure surfaced to caller; no request ever reaches A or B upstreams
+  observed : HTTP 500 — server_error; A/B upstream hits during test: 0
+  verdict  : PASS
+
+===== T30 — Ordered fallback inside A: a1 failing → served by a2 =====
+  expected : Implicit chain across the VK allowed set serves from mock-a2 (bare-model calling form)
+  observed : HTTP 200, routed={"provider":"mock-a2","model":"mock-small","key":"a2-secondary","is_fallback":true,"primary_provider":"mock-a1","primary_model":"mock-small"}, content="mock-answer key=sk-mock-a2 model=mock-small n=4"
+  verdict  : PASS
+
+===== T31 — Ordered fallback A→B: a1+a2 failing → vk-ab served by b1 =====
+  expected : Chain a1 → a2 → b1; b1 serves the request
+  observed : HTTP 200, routed={"provider":"mock-b1","model":"mock-small","key":"b1-free","is_fallback":true,"primary_provider":"mock-a1","primary_model":"mock-small"}
+  verdict  : PASS
+
+===== T32 — A group fully down → A-only VK must NOT escape to B =====
+  expected : Failure, and zero B/C upstream hits (strict single-group token)
+  observed : HTTP 500, B/C upstream hits: 0
+  verdict  : PASS
+
+===== T33 — Ordered fallback on TIMEOUT (a1 hangs → a2 serves) =====
+  expected : After the 15s provider timeout, the implicit chain serves from mock-a2
+  observed : HTTP 200 after 15018ms, routed={"provider":"mock-a2","model":"mock-small","key":"a2-secondary","is_fallback":true,"primary_provider":"mock-a1","primary_model":"mock-small"}
+  verdict  : PASS
+
+===== T34 — Caller-side requirement: explicit provider/model needs request-level fallbacks =====
+  expected : Pinned provider form fails without fallbacks; with explicit fallbacks it degrades to a2
+  observed : without fallbacks: HTTP 500; with fallbacks: HTTP 200, routed={"provider":"mock-a2","model":"mock-small","key":"a2-secondary","is_fallback":true,"primary_provider":"mock-a1","primary_model":"mock-small"}
+  verdict  : PASS
+
+===== T40 — Streaming: chunked SSE passthrough =====
+  expected : Multiple data: chunks streamed through, final [DONE], assembled content non-empty
+  observed : HTTP 200, 9 data lines, [DONE]=true, firstByte=16ms, assembled="mock-answer key=sk-mock-a1 model=mock-small n=12"
+  verdict  : PASS
+
+===== T50 — Provider failure (401 upstream) on B: surfaced, no fallback =====
+  expected : Caller receives an error; B VK has no fallback target
+  observed : HTTP 502 — upstream_credentials_exhausted
+  verdict  : PASS
+
+===== T51 — Provider failure (401) on a1 → rule fallback serves from a2 =====
+  expected : 401 marks the key/provider dead → chain serves from mock-a2
+  observed : HTTP 200, routed={"provider":"mock-a2","model":"mock-small","key":"a2-secondary","is_fallback":true,"primary_provider":"mock-a1","primary_model":"mock-small"}
+  verdict  : PASS
+
+===== T60 — Multi-key rotation: failing key rotates to healthy key (up to 6 runs) =====
+  expected : Requests succeed; at least one run shows the failing key retried and the healthy key serving
+  observed : rotation observed in run 0: [sk-mock-429:429, sk-mock-mk1:ok] → served by mk-good
+  verdict  : PASS
+
+===== T70 — Model list discovery via gateway (/v1/models with VK) =====
+  expected : A model list a caller can use
+  observed : HTTP 200, 6 models: mock-a1/mock-fail-model, mock-a1/mock-large, mock-a1/mock-small, mock-a2/mock-fail-model, mock-a2/mock-large, mock-a2/mock-small
+  verdict  : PASS
+
+===== T71 — Operator model discovery via gateway API (/api/models) =====
+  expected : Gateway-side model catalog listing (what the operator picks models from)
+  observed : HTTP 200, 5 models: mock-fail-model, mock-large, mock-small, mock-fail-model, mock-large
+  verdict  : PASS
+
+===== T80 — Operator UI reachable (dashboard HTML) =====
+  expected : Web UI served on the isolated port
+  observed : HTTP 200, 8542 bytes, looks like HTML=true
+  verdict  : PASS
+
+===== T81 — Operator API: providers readback =====
+  expected : Channel list readable by the operator
+  observed : HTTP 200, providers=[mock-a1, mock-a2, mock-b1, mock-c1, mock-multikey]
+  verdict  : PASS
+
+===== T82 — Operator API: virtual keys readback =====
+  expected : Caller-key list readable
+  observed : HTTP 200, vks=[vk-a-strict, vk-ab, vk-b, vk-c, vk-multikey, vk-a-norule, vk-ab-norule, vk-rl-probe]
+  verdict  : PASS
+
+===== T83 — Operator API: request logs readback =====
+  expected : Recent requests visible to the operator
+  observed : HTTP 200, 8277 bytes
+  verdict  : PASS
+
+===== T90 — Secret exposure: provider keys must never be returned in plaintext =====
+  expected : Provider key values masked (first/last chars only) like the Ming-Gateway channel page; never full plaintext
+  observed : probed 10 endpoints; plaintext provider-key hits: 0; masked form present: true
+  notes    : Provider credentials stayed masked in every probed payload.
+  verdict  : PASS
+
+===== T91 — Content logging state matches /api/config (privacy-relevant default) =====
+  expected : Behaviour matches the config flag: content present in logs when disable_content_logging=false
+  observed : disable_content_logging=false; content marker found in logs=true
+  notes    : Content is recorded by default (flag false, marker in logs=true) and Ming-Gateway logs metadata only. Verified fix: set client.disable_content_logging=true WITH source_of_truth="config.json" (with the default split mode the file value is ignored once the config store exists) — with that, new rows carry content_summary=null. Consistency check: true.
+  verdict  : PARTIAL
+
+===== T95 — Route/provider readback in the response itself =====
+  expected : Response identifies the provider + key that actually served it
+  observed : routing_info={"provider":"mock-a1","model":"mock-small","key":"a1-primary"}
+  verdict  : PASS
+
+===== T96 — Route/provider readback in operator logs after a fallback =====
+  expected : Logs show which provider/key served the fallback request
+  observed : served by {"provider":"mock-a1","model":"mock-small","key":"a1-primary"}; logs mention mock-a2=true
+  verdict  : PASS
+
+===== T120 — Caller compat: Ming-Gateway X-GW-Group header =====
+  expected : Bifrost has no notion of X-GW-Group; the header must be ignored (and must NOT grant access to C)
+  observed : HTTP 403, routed={}, error=provider_blocked
+  notes    : Header is inert: group selection must be expressed with virtual keys / routing rules instead.
+  verdict  : PASS
+
+===== T121 — Caller compat: Ming-Gateway model prefix form "c:mock-small" =====
+  expected : Bifrost does not implement the "group:model" prefix; expect an unknown-model error (caller change required)
+  observed : HTTP 400 — could not auto resolve a provider for the request, please specify a provider explicitly
+  notes    : Documents a real caller-facing difference.
+  verdict  : PASS
+
+===== T122 — Caller compat: OpenAI SDK style Authorization: Bearer <vk> =====
+  expected : Bearer VK auth accepted per docs (auth disabled mode)
+  observed : HTTP 200, mock-answer key=sk-mock-a1 model=mock-small n=6
+  verdict  : PASS
+
+===== T130 — Request rate limit (3 per window) → 4th request refused (dedicated probe VK) =====
+  expected : First 3 requests pass, 4th returns 429 request_limited
+  observed : status series: 200, 200, 200, 429; last error: request_limited
+  verdict  : PASS
+
+===== T131 — C group dollar budget accounting visible to operator =====
+  expected : Budget usage tracked per virtual key
+  observed : HTTP 200 — {"budgets":[{"id":"budget-c-daily","max_limit":5,"reset_duration":"1d","last_reset":"2026-09-26T00:59:16.271689+08:00","current_usage":0,"virtual_key_id":"vk-c","config_hash":"ba3c8a0e124ddc1cc52ce2819682f313a12f8b5388efc2df4b7908f9ffda54f5","created_at":"0001-01-01T00:00:00Z","updated_at":"2026-09-
+  notes    : Budget object exists and is exposed; the C request-rate limit was raised to 500 for the rest of the run to keep tests independent; dollar accounting for the mock provider depends on pricing configuration — with no pricing entry for custom models the spend stays $0, so the budget cannot gate traffic in this fixture. Ming-Gateway ships a built-in price table.
+  verdict  : PARTIAL

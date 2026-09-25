@@ -1,0 +1,454 @@
+{
+  "$schema": "https://www.getbifrost.ai/schema",
+  "version": 1,
+  "client": {
+    "enable_logging": true,
+    "drop_excess_requests": false,
+    "initial_pool_size": 300
+  },
+  "providers": {
+    "mock-a1": {
+      "keys": [
+        {
+          "name": "a1-primary",
+          "value": "sk-mock-a1",
+          "models": [
+            "*"
+          ],
+          "weight": 1.0
+        }
+      ],
+      "network_config": {
+        "base_url": "http://127.0.0.1:18080",
+        "allow_private_network": true,
+        "default_request_timeout_in_seconds": 15,
+        "max_retries": 1
+      },
+      "custom_provider_config": {
+        "base_provider_type": "openai",
+        "allowed_requests": {
+          "chat_completion": true,
+          "chat_completion_stream": true,
+          "list_models": true
+        }
+      }
+    },
+    "mock-a2": {
+      "keys": [
+        {
+          "name": "a2-secondary",
+          "value": "sk-mock-a2",
+          "models": [
+            "*"
+          ],
+          "weight": 1.0
+        }
+      ],
+      "network_config": {
+        "base_url": "http://127.0.0.1:18080",
+        "allow_private_network": true,
+        "default_request_timeout_in_seconds": 15,
+        "max_retries": 1
+      },
+      "custom_provider_config": {
+        "base_provider_type": "openai",
+        "allowed_requests": {
+          "chat_completion": true,
+          "chat_completion_stream": true,
+          "list_models": true
+        }
+      }
+    },
+    "mock-b1": {
+      "keys": [
+        {
+          "name": "b1-free",
+          "value": "sk-mock-b1",
+          "models": [
+            "*"
+          ],
+          "weight": 1.0
+        }
+      ],
+      "network_config": {
+        "base_url": "http://127.0.0.1:18080",
+        "allow_private_network": true,
+        "default_request_timeout_in_seconds": 15,
+        "max_retries": 1
+      },
+      "custom_provider_config": {
+        "base_provider_type": "openai",
+        "allowed_requests": {
+          "chat_completion": true,
+          "chat_completion_stream": true,
+          "list_models": true
+        }
+      }
+    },
+    "mock-c1": {
+      "keys": [
+        {
+          "name": "c1-expensive",
+          "value": "sk-mock-c1",
+          "models": [
+            "*"
+          ],
+          "weight": 1.0
+        }
+      ],
+      "network_config": {
+        "base_url": "http://127.0.0.1:18080",
+        "allow_private_network": true,
+        "default_request_timeout_in_seconds": 15,
+        "max_retries": 0
+      },
+      "custom_provider_config": {
+        "base_provider_type": "openai",
+        "allowed_requests": {
+          "chat_completion": true,
+          "chat_completion_stream": true,
+          "list_models": true
+        }
+      }
+    },
+    "mock-multikey": {
+      "keys": [
+        {
+          "name": "mk-bad",
+          "value": "sk-mock-429",
+          "models": [
+            "*"
+          ],
+          "weight": 1.0
+        },
+        {
+          "name": "mk-good",
+          "value": "sk-mock-mk1",
+          "models": [
+            "*"
+          ],
+          "weight": 1.0
+        }
+      ],
+      "network_config": {
+        "base_url": "http://127.0.0.1:18080",
+        "allow_private_network": true,
+        "default_request_timeout_in_seconds": 15,
+        "max_retries": 2
+      },
+      "custom_provider_config": {
+        "base_provider_type": "openai",
+        "allowed_requests": {
+          "chat_completion": true,
+          "chat_completion_stream": true,
+          "list_models": true
+        }
+      }
+    }
+  },
+  "governance": {
+    "virtual_keys": [
+      {
+        "id": "vk-a-strict",
+        "name": "A strict (single group)",
+        "description": "Mirrors a GATEWAY_TOKEN_A with allowGroups=[A] only: cannot reach B or C providers.",
+        "value": "sk-bf-a-strict",
+        "provider_configs": [
+          {
+            "provider": "mock-a1",
+            "allowed_models": [
+              "*"
+            ],
+            "key_ids": [
+              "*"
+            ]
+          },
+          {
+            "provider": "mock-a2",
+            "allowed_models": [
+              "*"
+            ],
+            "key_ids": [
+              "*"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "vk-ab",
+        "name": "A then B (explicit cross-group degrade)",
+        "description": "Mirrors a token with allowGroups=[A,B]: ordered chain a1 -> a2 -> b1 is expressed as a server-side routing rule, no caller change.",
+        "value": "sk-bf-ab",
+        "provider_configs": [
+          {
+            "provider": "mock-a1",
+            "allowed_models": [
+              "*"
+            ],
+            "key_ids": [
+              "*"
+            ]
+          },
+          {
+            "provider": "mock-a2",
+            "allowed_models": [
+              "*"
+            ],
+            "key_ids": [
+              "*"
+            ]
+          },
+          {
+            "provider": "mock-b1",
+            "allowed_models": [
+              "*"
+            ],
+            "key_ids": [
+              "*"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "vk-a-norule",
+        "name": "A strict, no routing rule (raw access-profile probe)",
+        "description": "Same provider set as vk-a-strict but WITHOUT a routing rule, to observe native deny-by-default provider blocking.",
+        "value": "sk-bf-a-norule",
+        "provider_configs": [
+          {
+            "provider": "mock-a1",
+            "allowed_models": [
+              "*"
+            ],
+            "key_ids": [
+              "*"
+            ]
+          },
+          {
+            "provider": "mock-a2",
+            "allowed_models": [
+              "*"
+            ],
+            "key_ids": [
+              "*"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "vk-ab-norule",
+        "name": "A+B, NO routing rule (decisive probe)",
+        "description": "Same providers as vk-ab but without a routing rule: observe implicit failover order across the allowed provider set.",
+        "value": "sk-bf-ab-norule",
+        "provider_configs": [
+          {
+            "provider": "mock-a1",
+            "allowed_models": [
+              "*"
+            ],
+            "key_ids": [
+              "*"
+            ]
+          },
+          {
+            "provider": "mock-a2",
+            "allowed_models": [
+              "*"
+            ],
+            "key_ids": [
+              "*"
+            ]
+          },
+          {
+            "provider": "mock-b1",
+            "allowed_models": [
+              "*"
+            ],
+            "key_ids": [
+              "*"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "vk-b",
+        "name": "B free group",
+        "description": "Mirrors GATEWAY_TOKEN_B: stays inside B even when A is down (no cross-group escape).",
+        "value": "sk-bf-b",
+        "provider_configs": [
+          {
+            "provider": "mock-b1",
+            "allowed_models": [
+              "*"
+            ],
+            "key_ids": [
+              "*"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "vk-c",
+        "name": "C expensive group (explicit only)",
+        "description": "Mirrors GATEWAY_TOKEN_C: C is never an implicit fallback; budget + request rate limit attached.",
+        "value": "sk-bf-c",
+        "rate_limit_id": "rl-c-requests",
+        "provider_configs": [
+          {
+            "provider": "mock-c1",
+            "allowed_models": [
+              "*"
+            ],
+            "key_ids": [
+              "*"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "vk-multikey",
+        "name": "Multi-key rotation probe",
+        "description": "One key fails with 429, the other works; max_retries=2 must rotate keys.",
+        "value": "sk-bf-multikey",
+        "provider_configs": [
+          {
+            "provider": "mock-multikey",
+            "allowed_models": [
+              "*"
+            ],
+            "key_ids": [
+              "*"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "vk-rl-probe",
+        "name": "Rate-limit probe (3 requests/hour)",
+        "description": "Dedicated virtual key for the rate-limit test so it cannot be polluted by other C-group traffic.",
+        "value": "sk-bf-rl-probe",
+        "rate_limit_id": "rl-probe",
+        "provider_configs": [
+          {
+            "provider": "mock-b1",
+            "allowed_models": [
+              "*"
+            ],
+            "key_ids": [
+              "*"
+            ]
+          }
+        ]
+      }
+    ],
+    "rate_limits": [
+      {
+        "id": "rl-c-requests",
+        "request_max_limit": 500,
+        "request_reset_duration": "1h"
+      },
+      {
+        "id": "rl-probe",
+        "request_max_limit": 3,
+        "request_reset_duration": "1m"
+      }
+    ],
+    "budgets": [
+      {
+        "id": "budget-c-daily",
+        "max_limit": 5,
+        "reset_duration": "1d",
+        "virtual_key_id": "vk-c"
+      }
+    ],
+    "routing_rules": [
+      {
+        "id": "chain-a-strict",
+        "name": "A group ordered chain (strict)",
+        "enabled": false,
+        "cel_expression": "true",
+        "scope": "virtual_key",
+        "scope_id": "vk-a-strict",
+        "priority": 0,
+        "targets": [
+          {
+            "provider": "mock-a1",
+            "weight": 1.0
+          }
+        ],
+        "fallbacks": [
+          "mock-a2"
+        ],
+        "description": "DISABLED during pilot: observed to suppress the implicit failover chain (see report P4). Kept for reference."
+      },
+      {
+        "id": "chain-a-then-b",
+        "name": "A group ordered chain with B degrade",
+        "enabled": false,
+        "cel_expression": "true",
+        "scope": "virtual_key",
+        "scope_id": "vk-ab",
+        "priority": 0,
+        "targets": [
+          {
+            "provider": "mock-a1",
+            "weight": 1.0
+          }
+        ],
+        "fallbacks": [
+          "mock-a2",
+          "mock-b1"
+        ],
+        "description": "DISABLED during pilot: observed to suppress the implicit failover chain (see report P4). Kept for reference."
+      },
+      {
+        "id": "chain-b-only",
+        "name": "B group, no fallback",
+        "enabled": false,
+        "cel_expression": "true",
+        "scope": "virtual_key",
+        "scope_id": "vk-b",
+        "priority": 0,
+        "targets": [
+          {
+            "provider": "mock-b1",
+            "weight": 1.0
+          }
+        ],
+        "fallbacks": [],
+        "description": "DISABLED during pilot: observed to suppress the implicit failover chain (see report P4). Kept for reference."
+      },
+      {
+        "id": "chain-c-explicit-only",
+        "name": "C group, never implicit fallback",
+        "enabled": false,
+        "cel_expression": "true",
+        "scope": "virtual_key",
+        "scope_id": "vk-c",
+        "priority": 0,
+        "targets": [
+          {
+            "provider": "mock-c1",
+            "weight": 1.0
+          }
+        ],
+        "fallbacks": [],
+        "description": "DISABLED during pilot: observed to suppress the implicit failover chain (see report P4). Kept for reference."
+      }
+    ]
+  },
+  "config_store": {
+    "enabled": true,
+    "type": "sqlite",
+    "config": {
+      "path": "./config.db"
+    }
+  },
+  "logs_store": {
+    "enabled": true,
+    "type": "sqlite",
+    "config": {
+      "path": "./logs.db"
+    }
+  }
+}
