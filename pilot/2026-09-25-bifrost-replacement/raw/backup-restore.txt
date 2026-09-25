@@ -1,0 +1,26 @@
+===== backup/restore test 2026-09-26T01:16:42+08:00 =====
+--- step 0: ensure gateway running
+health: 200
+--- step 1: create marker VK via API
+marker id: 81d5f8b4-53aa-4fb8-91e8-5c182008b2f0
+marker present after create: 1
+--- step 2: stop gateway, back up the whole app dir
+backup contents:
+total 33680
+drwxr-xr-x 1 User 197121        0 Sep 26 01:16 .
+drwxr-xr-x 1 User 197121        0 Sep 26 01:16 ..
+-rw-r--r-- 1 User 197121 29028352 Sep 26 01:16 config.db
+-rw-r--r-- 1 User 197121    32768 Sep 26 01:16 config.db-shm
+-rw-r--r-- 1 User 197121  4177712 Sep 26 01:16 config.db-wal
+-rw-r--r-- 1 User 197121    11850 Sep 26 01:16 config.json
+-rw-r--r-- 1 User 197121     4096 Sep 26 01:16 logs.db
+-rw-r--r-- 1 User 197121    32768 Sep 26 01:16 logs.db-shm
+-rw-r--r-- 1 User 197121  1190712 Sep 26 01:16 logs.db-wal
+--- step 3: delete config.db, start, check marker (state location proof)
+marker present with config.db deleted: 0
+0
+--- step 4: restore backup copy, start, check marker
+marker present after restore: 1
+--- step 5: cleanup (delete marker VK via API, then stop)
+marker present after cleanup: 1
+===== done =====

@@ -1,0 +1,304 @@
+{
+  "ranAt": "2026-09-25T17:32:08.375Z",
+  "gateway": "http://127.0.0.1:17878",
+  "mock": "http://127.0.0.1:18080",
+  "results": [
+    {
+      "id": "T01",
+      "title": "OpenAI-compatible non-stream call (provider/model form)",
+      "verdict": "PASS",
+      "expected": "HTTP 200 with OpenAI-shaped body, served by mock-a1/a1-primary",
+      "observed": "HTTP 200, 4ms, content=\"mock-answer key=sk-mock-a1 model=mock-small n=1\", routing={\"provider\":\"mock-a1\",\"model\":\"mock-small\",\"key\":\"a1-primary\"}",
+      "notes": "",
+      "evidence": "{\"id\":\"chatcmpl-mock-7fbcf847\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"logprobs\":null,\"message\":{\"role\":\"assistant\",\"content\":\"mock-answer key=sk-mock-a1 model=mock-small n=1\"}}],\"created\":1790357504,\"model\":\"mock-small\",\"object\":\"chat.completion\",\"system_fingerprint\":\"\",\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":8,\"total_tokens\":19},\"extra_fields\":{\"request_type\":\"chat_completion\",\"routing_info\":{\"provider\":\"mock-a1\",\"model\":\"mock-small\",\"key\":\"a1-primary\"},\"provider\":\"mock-a1\",\"original_model_requested\":\"mock-small\",\"resolved_model_used\":\"mock-small\",\"latency\":1,\"upstream_latency\""
+    },
+    {
+      "id": "T02",
+      "title": "OpenAI-compatible call with BARE model name (Ming-Gateway calling convention)",
+      "verdict": "PASS",
+      "expected": "Ming-Gateway callers send bare model names; with a routing rule pinning the provider this should still work",
+      "observed": "HTTP 200, routed={\"provider\":\"mock-a1\",\"model\":\"mock-small\",\"key\":\"a1-primary\"}",
+      "notes": "",
+      "evidence": "{\"id\":\"chatcmpl-mock-d656d457\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"logprobs\":null,\"message\":{\"role\":\"assistant\",\"content\":\"mock-answer key=sk-mock-a1 model=mock-small n=2\"}}],\"created\":1790357504,\"model\":\"mock-small\",\"object\":\"chat.completion\",\"system_fingerprint\":\"\",\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":8,\"total_tokens\":19},\"extra_fields\":{\"request_type\":\"chat_completion\",\"rou"
+    },
+    {
+      "id": "T03",
+      "title": "Bare model name WITHOUT routing rule (Ming-Gateway callers unchanged)",
+      "verdict": "PASS",
+      "expected": "Bare model resolves through the model catalog across the allowed provider set (first provider preferred)",
+      "observed": "HTTP 200, routed={\"provider\":\"mock-a1\",\"model\":\"mock-small\",\"key\":\"a1-primary\"}",
+      "notes": "No caller-side model renaming needed; provider is chosen from the VK-scoped allowed set.",
+      "evidence": "{\"id\":\"chatcmpl-mock-cc57ac3d\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"logprobs\":null,\"message\":{\"role\":\"assistant\",\"content\":\"mock-answer key=sk-mock-a1 model=mock-small n=3\"}}],\"created\":1790357504,\"model\":\"mock-small\",\"object\":\"chat.completion\",\"system_fingerprint\":\"\",\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":8,\"total_tokens\":19},\"extra_fields\":{\"request_type\":\"chat_completion\",\"rou"
+    },
+    {
+      "id": "T10",
+      "title": "Isolation: A-only VK (no rule) → B provider must be denied",
+      "verdict": "PASS",
+      "expected": "Denied (provider not in this VK's provider_configs)",
+      "observed": "HTTP 403 — provider_blocked",
+      "notes": "",
+      "evidence": "{\"type\":\"provider_blocked\",\"is_bifrost_error\":false,\"status_code\":403,\"error\":{\"message\":\"Provider 'mock-b1' is not allowed for virtual key 'A strict, no routing rule (raw access-profile probe)'\"},\"extra_fields\":{\"routing_info\":{},\"provider\":\"mock-b1\",\"original_model_requested\":\"mock-small\",\"resolved_model_used\":\"mock-small\",\"request_type\":\"chat_completion\",\"error_type\":\"policy_provider_blocked\"}}\n"
+    },
+    {
+      "id": "T11",
+      "title": "Isolation: A-only VK (no rule) → C provider must be denied",
+      "verdict": "PASS",
+      "expected": "Denied",
+      "observed": "HTTP 403 — provider_blocked",
+      "notes": "",
+      "evidence": "{\"type\":\"provider_blocked\",\"is_bifrost_error\":false,\"status_code\":403,\"error\":{\"message\":\"Provider 'mock-c1' is not allowed for virtual key 'A strict, no routing rule (raw access-profile probe)'\"},\"extra_fields\":{\"routing_info\":{},\"provider\":\"mock-c1\",\"original_model_requested\":\"mock-small\",\"resolved_model_used\":\"mock-small\",\"request_type\":\"chat_completion\",\"error_type\":\"policy_provider_blocked\"}}\n"
+    },
+    {
+      "id": "T12",
+      "title": "Isolation: B VK → A provider must be denied",
+      "verdict": "PASS",
+      "expected": "Denied",
+      "observed": "HTTP 403 — provider_blocked",
+      "notes": "",
+      "evidence": "{\"type\":\"provider_blocked\",\"is_bifrost_error\":false,\"status_code\":403,\"error\":{\"message\":\"Provider 'mock-a1' is not allowed for virtual key 'B free group'\"},\"extra_fields\":{\"routing_info\":{},\"provider\":\"mock-a1\",\"original_model_requested\":\"mock-small\",\"resolved_model_used\":\"mock-small\",\"request_type\":\"chat_completion\",\"error_type\":\"policy_provider_blocked\"}}\n"
+    },
+    {
+      "id": "T13",
+      "title": "Isolation: A VK → asked for C provider (no routing rules active)",
+      "verdict": "PASS",
+      "expected": "Explicit refusal (403 provider_blocked), same semantics as a strict Ming-Gateway token",
+      "observed": "HTTP 403 — provider_blocked, routed={}",
+      "notes": "",
+      "evidence": "{\"type\":\"provider_blocked\",\"is_bifrost_error\":false,\"status_code\":403,\"error\":{\"message\":\"Provider 'mock-c1' is not allowed for virtual key 'A strict (single group)'\"},\"extra_fields\":{\"routing_info\":{},\"provider\":\"mock-c1\",\"original_model_requested\":\"mock-small\",\"resolved_model_used\":\"mock-small\",\"request_type\":\"chat_completion\",\"error_type\":\"policy_provider_blocked\"}}\n"
+    },
+    {
+      "id": "T14",
+      "title": "Isolation: C VK → asked for A provider (no routing rules active)",
+      "verdict": "PASS",
+      "expected": "Explicit refusal; must never reach A",
+      "observed": "HTTP 403 — provider_blocked, routed={}",
+      "notes": "",
+      "evidence": "{\"type\":\"provider_blocked\",\"is_bifrost_error\":false,\"status_code\":403,\"error\":{\"message\":\"Provider 'mock-a1' is not allowed for virtual key 'C expensive group (explicit only)'\"},\"extra_fields\":{\"routing_info\":{},\"provider\":\"mock-a1\",\"original_model_requested\":\"mock-small\",\"resolved_model_used\":\"mock-small\",\"request_type\":\"chat_completion\",\"error_type\":\"policy_provider_blocked\"}}\n"
+    },
+    {
+      "id": "T20",
+      "title": "C group NEVER implicit fallback: C upstream down → C VK must fail, A/B untouched",
+      "verdict": "PASS",
+      "expected": "Failure surfaced to caller; no request ever reaches A or B upstreams",
+      "observed": "HTTP 500 — server_error; A/B upstream hits during test: 0",
+      "notes": "",
+      "evidence": "{\"response\":\"{\\\"is_bifrost_error\\\":false,\\\"status_code\\\":500,\\\"error\\\":{\\\"type\\\":\\\"server_error\\\",\\\"message\\\":\\\"upstream exploded (mock)\\\"},\\\"extra_fields\\\":{\\\"routing_info\\\":{\\\"provider\\\":\\\"mock-c1\\\",\\\"model\\\":\\\"mock-small\\\",\\\"key\\\":\\\"c1-expensive\\\"},\\\"provider\\\":\\\"mock-c1\\\",\\\"original_model_requested\\\":\\\"mock-small\\\",\\\"resolved_model_used\\\":\\\"mock-sm\",\"upstreamHits\":[\"sk-mock-c1:500\"]}"
+    },
+    {
+      "id": "T30",
+      "title": "Ordered fallback inside A: a1 failing → served by a2",
+      "verdict": "PASS",
+      "expected": "Implicit chain across the VK allowed set serves from mock-a2 (bare-model calling form)",
+      "observed": "HTTP 200, routed={\"provider\":\"mock-a2\",\"model\":\"mock-small\",\"key\":\"a2-secondary\",\"is_fallback\":true,\"primary_provider\":\"mock-a1\",\"primary_model\":\"mock-small\"}, content=\"mock-answer key=sk-mock-a2 model=mock-small n=4\"",
+      "notes": "",
+      "evidence": "{\"id\":\"chatcmpl-mock-0a3a9727\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"logprobs\":null,\"message\":{\"role\":\"assistant\",\"content\":\"mock-answer key=sk-mock-a2 model=mock-small n=4\"}}],\"created\":1790357504,\"model\":\"mock-small\",\"object\":\"chat.completion\",\"system_fingerprint\":\"\",\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":8,\"total_tokens\":19},\"extra_fields\":{\"request_type\":\"chat_completion\",\"rou"
+    },
+    {
+      "id": "T31",
+      "title": "Ordered fallback A→B: a1+a2 failing → vk-ab served by b1",
+      "verdict": "PASS",
+      "expected": "Chain a1 → a2 → b1; b1 serves the request",
+      "observed": "HTTP 200, routed={\"provider\":\"mock-b1\",\"model\":\"mock-small\",\"key\":\"b1-free\",\"is_fallback\":true,\"primary_provider\":\"mock-a1\",\"primary_model\":\"mock-small\"}",
+      "notes": "",
+      "evidence": "{\"id\":\"chatcmpl-mock-dbee40ed\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"logprobs\":null,\"message\":{\"role\":\"assistant\",\"content\":\"mock-answer key=sk-mock-b1 model=mock-small n=9\"}}],\"created\":1790357505,\"model\":\"mock-small\",\"object\":\"chat.completion\",\"system_fingerprint\":\"\",\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":8,\"total_tokens\":19},\"extra_fields\":{\"request_type\":\"chat_completion\",\"rou"
+    },
+    {
+      "id": "T32",
+      "title": "A group fully down → A-only VK must NOT escape to B",
+      "verdict": "PASS",
+      "expected": "Failure, and zero B/C upstream hits (strict single-group token)",
+      "observed": "HTTP 500, B/C upstream hits: 0",
+      "notes": "",
+      "evidence": "{\"response\":\"{\\\"is_bifrost_error\\\":false,\\\"status_code\\\":500,\\\"error\\\":{\\\"type\\\":\\\"server_error\\\",\\\"message\\\":\\\"upstream exploded (mock)\\\"},\\\"extra_fields\\\":{\\\"routing_info\\\":{\\\"provider\\\":\\\"mock-a1\\\",\\\"model\\\":\\\"mock-small\\\",\\\"key\\\":\\\"a1-primary\\\"},\\\"provider\\\":\\\"mock-a1\\\",\\\"original_model_requested\\\":\\\"mock-small\\\",\\\"resolved_model_used\\\":\\\"mock-smal\",\"upstreamHits\":[\"sk-mock-a1\",\"sk-mock-a1\",\"sk-mock-a2\",\"sk-mock-a2\"]}"
+    },
+    {
+      "id": "T33",
+      "title": "Ordered fallback on TIMEOUT (a1 hangs → a2 serves)",
+      "verdict": "PASS",
+      "expected": "After the 15s provider timeout, the implicit chain serves from mock-a2",
+      "observed": "HTTP 200 after 15018ms, routed={\"provider\":\"mock-a2\",\"model\":\"mock-small\",\"key\":\"a2-secondary\",\"is_fallback\":true,\"primary_provider\":\"mock-a1\",\"primary_model\":\"mock-small\"}",
+      "notes": "",
+      "evidence": "{\"id\":\"chatcmpl-mock-9395aee0\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"logprobs\":null,\"message\":{\"role\":\"assistant\",\"content\":\"mock-answer key=sk-mock-a2 model=mock-small n=6\"}}],\"created\":1790357522,\"model\":\"mock-small\",\"object\":\"chat.completion\",\"system_fingerprint\":\"\",\"usage\":{\"prompt_token"
+    },
+    {
+      "id": "T34",
+      "title": "Caller-side requirement: explicit provider/model needs request-level fallbacks",
+      "verdict": "PASS",
+      "expected": "Pinned provider form fails without fallbacks; with explicit fallbacks it degrades to a2",
+      "observed": "without fallbacks: HTTP 500; with fallbacks: HTTP 200, routed={\"provider\":\"mock-a2\",\"model\":\"mock-small\",\"key\":\"a2-secondary\",\"is_fallback\":true,\"primary_provider\":\"mock-a1\",\"primary_model\":\"mock-small\"}",
+      "notes": "",
+      "evidence": "{\"noFb\":\"{\\\"is_bifrost_error\\\":false,\\\"status_code\\\":500,\\\"error\\\":{\\\"type\\\":\\\"server_error\\\",\\\"message\\\":\\\"upstream exploded (mock)\\\"},\\\"extra_fields\\\":{\\\"routing_info\\\":{\\\"provider\\\":\\\"mock-a1\\\",\\\"model\\\":\\\"mock-small\\\",\\\"key\\\":\\\"a1-pri\",\"withFb\":\"{\\\"id\\\":\\\"chatcmpl-mock-309666c4\\\",\\\"choices\\\":[{\\\"index\\\":0,\\\"finish_reason\\\":\\\"stop\\\",\\\"logprobs\\\":null,\\\"message\\\":{\\\"role\\\":\\\"assistant\\\",\\\"content\\\":\\\"mock-answer key=sk-mock-a2 model=mock-small n=11\\\"}}],\\\"created\\\":1790357523,\\\"model\\\":\\\"mock-small\\\",\\\"object\\\":\\\"chat.complet\"}"
+    },
+    {
+      "id": "T40",
+      "title": "Streaming: chunked SSE passthrough",
+      "verdict": "PASS",
+      "expected": "Multiple data: chunks streamed through, final [DONE], assembled content non-empty",
+      "observed": "HTTP 200, 9 data lines, [DONE]=true, firstByte=16ms, assembled=\"mock-answer key=sk-mock-a1 model=mock-small n=12\"",
+      "notes": "",
+      "evidence": "data: {\"id\":\"chatcmpl-mock-7b339c8a\",\"choices\":[{\"index\":0,\"finish_reason\":null,\"logprobs\":null,\"delta\":{\"role\":\"assistant\"}}],\"created\":1790357523,\"model\":\"mock-small\",\"object\":\"chat.completion.chunk\",\"system_fingerprint\":\"\",\"usage\":null,\"extra_fields\":{\"request_type\":\"chat_completion_stream\",\"routing_info\":{\"provider\":\"mock-a1\",\"model\":\"mock-small\",\"key\":\"a1-primary\"},\"provider\":\"mock-a1\",\"original_model_requested\":\"mock-small\",\"resolved_model_used\":\"mock-small\",\"latency\":1,\"chunk_index\":0}}\n\n"
+    },
+    {
+      "id": "T50",
+      "title": "Provider failure (401 upstream) on B: surfaced, no fallback",
+      "verdict": "PASS",
+      "expected": "Caller receives an error; B VK has no fallback target",
+      "observed": "HTTP 502 — upstream_credentials_exhausted",
+      "notes": "",
+      "evidence": "{\"type\":\"upstream_credentials_exhausted\",\"is_bifrost_error\":false,\"status_code\":502,\"error\":{\"type\":\"upstream_credentials_exhausted\",\"message\":\"all configured keys returned permanent per-key errors (401/402/403)\"},\"extra_fields\":{\"routing_info\":{\"provider\":\"mock-b1\",\"model\":\"mock-small\",\"key\":\"b1-free\"},\"provider\":\"mock-b1\",\"original_model_requested\":\"mock-small\",\"resolved_model_used\":\"mock-small\""
+    },
+    {
+      "id": "T51",
+      "title": "Provider failure (401) on a1 → rule fallback serves from a2",
+      "verdict": "PASS",
+      "expected": "401 marks the key/provider dead → chain serves from mock-a2",
+      "observed": "HTTP 200, routed={\"provider\":\"mock-a2\",\"model\":\"mock-small\",\"key\":\"a2-secondary\",\"is_fallback\":true,\"primary_provider\":\"mock-a1\",\"primary_model\":\"mock-small\"}",
+      "notes": "",
+      "evidence": "{\"id\":\"chatcmpl-mock-d69834cb\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"logprobs\":null,\"message\":{\"role\":\"assistant\",\"content\":\"mock-answer key=sk-mock-a2 model=mock-small n=15\"}}],\"created\":1790357523,\"model\":\"mock-small\",\"object\":\"chat.completion\",\"system_fingerprint\":\"\",\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":8,\"total_tokens\":19},\"extra_fields\":{\"request_type\":\"chat_completion\",\"ro"
+    },
+    {
+      "id": "T60",
+      "title": "Multi-key rotation: failing key rotates to healthy key (up to 6 runs)",
+      "verdict": "PASS",
+      "expected": "Requests succeed; at least one run shows the failing key retried and the healthy key serving",
+      "observed": "rotation observed in run 0: [sk-mock-429:429, sk-mock-mk1:ok] → served by mk-good",
+      "notes": "",
+      "evidence": "[{\"run\":0,\"status\":200,\"servedBy\":\"mk-good\",\"attempts\":[\"sk-mock-429:429\",\"sk-mock-mk1:ok\"]},{\"run\":1,\"status\":200,\"servedBy\":\"mk-good\",\"attempts\":[\"sk-mock-mk1:ok\"]},{\"run\":2,\"status\":200,\"servedBy\":\"mk-good\",\"attempts\":[\"sk-mock-429:429\",\"sk-mock-mk1:ok\"]},{\"run\":3,\"status\":200,\"servedBy\":\"mk-good\",\"attempts\":[\"sk-mock-429:429\",\"sk-mock-mk1:ok\"]},{\"run\":4,\"status\":200,\"servedBy\":\"mk-good\",\"attempts\":[\"sk-mock-429:429\",\"sk-mock-mk1:ok\"]},{\"run\":5,\"status\":200,\"servedBy\":\"mk-good\",\"attempts\":[\"sk-mock-mk1:ok\"]}]"
+    },
+    {
+      "id": "T70",
+      "title": "Model list discovery via gateway (/v1/models with VK)",
+      "verdict": "PASS",
+      "expected": "A model list a caller can use",
+      "observed": "HTTP 200, 6 models: mock-a1/mock-fail-model, mock-a1/mock-large, mock-a1/mock-small, mock-a2/mock-fail-model, mock-a2/mock-large, mock-a2/mock-small",
+      "notes": "",
+      "evidence": "{\"data\":[{\"id\":\"mock-a1/mock-fail-model\",\"owned_by\":\"mock\"},{\"id\":\"mock-a1/mock-large\",\"owned_by\":\"mock\"},{\"id\":\"mock-a1/mock-small\",\"owned_by\":\"mock\"},{\"id\":\"mock-a2/mock-fail-model\",\"owned_by\":\"mock\"},{\"id\":\"mock-a2/mock-large\",\"owned_by\":\"mock\"},{\"id\":\"mock-a2/mock-small\",\"owned_by\":\"mock\"}],\"extra_fields\":{\"request_type\":\"list_models\",\"routing_info\":{},\"latency\":0,\"chunk_index\":0},\"key_statuse"
+    },
+    {
+      "id": "T71",
+      "title": "Operator model discovery via gateway API (/api/models)",
+      "verdict": "PASS",
+      "expected": "Gateway-side model catalog listing (what the operator picks models from)",
+      "observed": "HTTP 200, 5 models: mock-fail-model, mock-large, mock-small, mock-fail-model, mock-large",
+      "notes": "",
+      "evidence": "{\"models\":[{\"name\":\"mock-fail-model\",\"provider\":\"mock-a1\"},{\"name\":\"mock-large\",\"provider\":\"mock-a1\"},{\"name\":\"mock-small\",\"provider\":\"mock-a1\"},{\"name\":\"mock-fail-model\",\"provider\":\"mock-a2\"},{\"name\":\"mock-large\",\"provider\":\"mock-a2\"}],\"total\":15}\n"
+    },
+    {
+      "id": "T80",
+      "title": "Operator UI reachable (dashboard HTML)",
+      "verdict": "PASS",
+      "expected": "Web UI served on the isolated port",
+      "observed": "HTTP 200, 8542 bytes, looks like HTML=true",
+      "notes": "",
+      "evidence": "<!doctype html>\n<html lang=\"en\" suppressHydrationWarning>\n\t<head>\n\t\t<meta charset=\"UTF-8\" />\n\t\t<link rel=\"icon\" type=\"image/x-icon\" href=\"/favicon.ico\" />\n\t\t<meta name=\"viewport\" content=\"width=device"
+    },
+    {
+      "id": "T81",
+      "title": "Operator API: providers readback",
+      "verdict": "PASS",
+      "expected": "Channel list readable by the operator",
+      "observed": "HTTP 200, providers=[mock-a1, mock-a2, mock-b1, mock-c1, mock-multikey]",
+      "notes": "",
+      "evidence": "{\"providers\":[{\"name\":\"mock-a1\",\"network_config\":{\"base_url\":\"http://127.0.0.1:18080\",\"default_request_timeout_in_seconds\":15,\"max_retries\":1,\"retry_backoff_initial\":0,\"retry_backoff_max\":0,\"allow_private_network\":true},\"concurrency_and_buffer_size\":{\"concurrency\":1000,\"buffer_size\":5000},\"proxy_con"
+    },
+    {
+      "id": "T82",
+      "title": "Operator API: virtual keys readback",
+      "verdict": "PASS",
+      "expected": "Caller-key list readable",
+      "observed": "HTTP 200, vks=[vk-a-strict, vk-ab, vk-b, vk-c, vk-multikey, vk-a-norule, vk-ab-norule, vk-rl-probe]",
+      "notes": "",
+      "evidence": "{\"count\":8,\"limit\":8,\"offset\":0,\"total_count\":8,\"virtual_keys\":[{\"id\":\"vk-a-strict\",\"name\":\"A strict (single group)\",\"description\":\"Mirrors a GATEWAY_TOKEN_A with allowGroups=[A] only: cannot reach B or C providers.\",\"provider_configs\":[{\"id\":1,\"virtual_key_id\":\"vk-a-strict\",\"provider\":\"mock-a1\",\"we"
+    },
+    {
+      "id": "T83",
+      "title": "Operator API: request logs readback",
+      "verdict": "PASS",
+      "expected": "Recent requests visible to the operator",
+      "observed": "HTTP 200, 8277 bytes",
+      "notes": "",
+      "evidence": "{\"logs\":[{\"id\":\"72132318-cf5b-40f0-bbd9-39c242056f21\",\"parent_request_id\":\"f5706d27-ea4e-4e36-ab59-6b326b932f9a\",\"timestamp\":\"2026-09-25T17:31:46.5988452Z\",\"object\":\"chat_completion\",\"provider\":\"mock-a2\",\"model\":\"mock-small\",\"number_of_retries\":1,\"fallback_index\":1,\"selected_key_id\":\"\",\"selected_key_name\":\"\",\"virtual_key_id\":\"vk-a-strict\",\"virtual_key_name\":\"A strict (single group)\",\"routing_rule_"
+    },
+    {
+      "id": "T90",
+      "title": "Secret exposure: provider keys must never be returned in plaintext",
+      "verdict": "PASS",
+      "expected": "Provider key values masked (first/last chars only) like the Ming-Gateway channel page; never full plaintext",
+      "observed": "probed 10 endpoints; plaintext provider-key hits: 0; masked form present: true",
+      "notes": "Provider credentials stayed masked in every probed payload.",
+      "evidence": "{\"statuses\":[\"/api/providers→200\",\"/api/providers/mock-a1→200\",\"/api/providers/mock-a1/keys→200\",\"/api/providers/mock-c1/keys→200\",\"/api/config→200\",\"/api/governance/budgets→200\",\"/api/governance/rate-limits→200\",\"/api/governance/routing-rules→200\",\"/api/models→200\",\"/api/mcp→200\"],\"findings\":[],\"keysSample\":\"{\\\"keys\\\":[{\\\"id\\\":\\\"f74a288e-db5c-419f-b639-88cbe73ed269\\\",\\\"name\\\":\\\"a1-primary\\\",\\\"value\\\":{\\\"value\\\":\\\"sk-m************************k-a1\\\",\\\"type\\\":\\\"plain_text\\\"},\\\"models\\\":[\\\"*\\\"],\\\"blacklisted_models\\\":[],\\\"weight\\\":1,\\\"enabled\\\":true,\\\"use_for_batch_api\\\":false,\\\"use_anthropic_endpoints\\\":false,\\\"use_openai_endpoints\\\":false,\\\"\"}"
+    },
+    {
+      "id": "T91",
+      "title": "Content logging state matches /api/config (privacy-relevant default)",
+      "verdict": "PARTIAL",
+      "expected": "Behaviour matches the config flag: content present in logs when disable_content_logging=false",
+      "observed": "disable_content_logging=false; content marker found in logs=true",
+      "notes": "Content is recorded by default (flag false, marker in logs=true) and Ming-Gateway logs metadata only. Verified fix: set client.disable_content_logging=true WITH source_of_truth=\"config.json\" (with the default split mode the file value is ignored once the config store exists) — with that, new rows carry content_summary=null. Consistency check: true.",
+      "evidence": "flag=false markerInLogs=true"
+    },
+    {
+      "id": "T95",
+      "title": "Route/provider readback in the response itself",
+      "verdict": "PASS",
+      "expected": "Response identifies the provider + key that actually served it",
+      "observed": "routing_info={\"provider\":\"mock-a1\",\"model\":\"mock-small\",\"key\":\"a1-primary\"}",
+      "notes": "",
+      "evidence": "{\"id\":\"chatcmpl-mock-d93e9372\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"logprobs\":null,\"message\":{\"role\":\"assistant\",\"content\":\"mock-answer key=sk-mock-a1 model=mock-small n=3\"}}],\"created\":1790357527,\"model\":\"mock-small\",\"object\":\"chat.completion\",\"system_fingerprint\":\"\",\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":8,\"total_tokens\":19},\"extra_fields\":{\"request_type\":\"chat_completion\",\"routing_info\":{\"provider\":\"mock-a1\",\"model\":\"mock-small\",\"key\":\"a1-primary\"},\"provider\":\"mock-a1\",\"orig"
+    },
+    {
+      "id": "T96",
+      "title": "Route/provider readback in operator logs after a fallback",
+      "verdict": "PASS",
+      "expected": "Logs show which provider/key served the fallback request",
+      "observed": "served by {\"provider\":\"mock-a1\",\"model\":\"mock-small\",\"key\":\"a1-primary\"}; logs mention mock-a2=true",
+      "notes": "",
+      "evidence": "{\"logs\":[{\"id\":\"5588a84f-b5a0-4465-9495-83bc57fdfcdb\",\"parent_request_id\":null,\"timestamp\":\"2026-09-25T17:32:05.9642523Z\",\"object\":\"chat_completion\",\"provider\":\"mock-a1\",\"model\":\"mock-small\",\"number_of_retries\":0,\"fallback_index\":0,\"selected_key_id\":\"f74a288e-db5c-419f-b639-88cbe73ed269\",\"selected_key_name\":\"a1-primary\",\"virtual_key_id\":\"vk-a-strict\",\"virtual_key_name\":\"A strict (single group)\",\"routing_rule_id\":null,\"routing_rule_name\":null,\"selected_prompt_name\":null,\"selected_prompt_version\":"
+    },
+    {
+      "id": "T120",
+      "title": "Caller compat: Ming-Gateway X-GW-Group header",
+      "verdict": "PASS",
+      "expected": "Bifrost has no notion of X-GW-Group; the header must be ignored (and must NOT grant access to C)",
+      "observed": "HTTP 403, routed={}, error=provider_blocked",
+      "notes": "Header is inert: group selection must be expressed with virtual keys / routing rules instead.",
+      "evidence": "{\"type\":\"provider_blocked\",\"is_bifrost_error\":false,\"status_code\":403,\"error\":{\"message\":\"Provider 'mock-c1' is not allowed for virtual key 'A strict, no routing rule (raw access-profile probe)'\"},\"extra_fields\":{\"routing_info\":{},\"provider\":\"mock-c1\",\"original_model_requested\":\"mock-small\",\"resolve"
+    },
+    {
+      "id": "T121",
+      "title": "Caller compat: Ming-Gateway model prefix form \"c:mock-small\"",
+      "verdict": "PASS",
+      "expected": "Bifrost does not implement the \"group:model\" prefix; expect an unknown-model error (caller change required)",
+      "observed": "HTTP 400 — could not auto resolve a provider for the request, please specify a provider explicitly",
+      "notes": "Documents a real caller-facing difference.",
+      "evidence": "{\"is_bifrost_error\":false,\"error\":{\"message\":\"could not auto resolve a provider for the request, please specify a provider explicitly\"},\"extra_fields\":{\"routing_info\":{},\"original_model_requested\":\"c:mock-small\",\"resolved_model_used\":\"c:mock-small\",\"request_type\":\"chat_completion\"}}\n"
+    },
+    {
+      "id": "T122",
+      "title": "Caller compat: OpenAI SDK style Authorization: Bearer <vk>",
+      "verdict": "PASS",
+      "expected": "Bearer VK auth accepted per docs (auth disabled mode)",
+      "observed": "HTTP 200, mock-answer key=sk-mock-a1 model=mock-small n=6",
+      "notes": "",
+      "evidence": "{\"id\":\"chatcmpl-mock-1f604d02\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"logprobs\":null,\"message\":{\"role\":\"assistant\",\"content\":\"mock-answer key=sk-mock-a1 model=mock-small n=6\"}}],\"created\":1790357528,\"model\":\"mock-small\",\"object\":\"chat.completion\",\"system_fingerprint\":\"\",\"usage\":{\"prompt_token"
+    },
+    {
+      "id": "T130",
+      "title": "Request rate limit (3 per window) → 4th request refused (dedicated probe VK)",
+      "verdict": "PASS",
+      "expected": "First 3 requests pass, 4th returns 429 request_limited",
+      "observed": "status series: 200, 200, 200, 429; last error: request_limited",
+      "notes": "",
+      "evidence": "{\"type\":\"request_limited\",\"is_bifrost_error\":false,\"status_code\":429,\"error\":{\"message\":\"Rate limit exceeded: rate limit violated for vk Rate-limit probe (3 requests/hour): [request limit exceeded (3/3, resets every 1m)]\"},\"extra_fields\":{\"routing_info\":{},\"provider\":\"mock-b1\",\"original_model_reques"
+    },
+    {
+      "id": "T131",
+      "title": "C group dollar budget accounting visible to operator",
+      "verdict": "PARTIAL",
+      "expected": "Budget usage tracked per virtual key",
+      "observed": "HTTP 200 — {\"budgets\":[{\"id\":\"budget-c-daily\",\"max_limit\":5,\"reset_duration\":\"1d\",\"last_reset\":\"2026-09-26T00:59:16.271689+08:00\",\"current_usage\":0,\"virtual_key_id\":\"vk-c\",\"config_hash\":\"ba3c8a0e124ddc1cc52ce2819682f313a12f8b5388efc2df4b7908f9ffda54f5\",\"created_at\":\"0001-01-01T00:00:00Z\",\"updated_at\":\"2026-09-",
+      "notes": "Budget object exists and is exposed; the C request-rate limit was raised to 500 for the rest of the run to keep tests independent; dollar accounting for the mock provider depends on pricing configuration — with no pricing entry for custom models the spend stays $0, so the budget cannot gate traffic in this fixture. Ming-Gateway ships a built-in price table.",
+      "evidence": "{\"budgets\":[{\"id\":\"budget-c-daily\",\"max_limit\":5,\"reset_duration\":\"1d\",\"last_reset\":\"2026-09-26T00:59:16.271689+08:00\",\"current_usage\":0,\"virtual_key_id\":\"vk-c\",\"config_hash\":\"ba3c8a0e124ddc1cc52ce2819682f313a12f8b5388efc2df4b7908f9ffda54f5\",\"created_at\":\"0001-01-01T00:00:00Z\",\"updated_at\":\"2026-09-26T01:22:00.1077819+08:00\"}],\"count\":1}\n"
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "at": "2026-09-25T17:25:05.074Z",
+  "models": {
+    "status": 200,
+    "count": 5,
+    "sample": [
+      "mock-fail-model",
+      "mock-large",
+      "mock-small",
+      "mock-fail-model"
+    ]
+  },
+  "createProvider": 200,
+  "addKey": {
+    "status": 200,
+    "keysTotal": 1,
+    "masked": "sk-m************************k-a2"
+  },
+  "createVk": {
+    "status": 200,
+    "id": "ee6a2808-3131-46ef-9ae5-93d753bd9840",
+    "valueReadback": true
+  },
+  "callThroughNewProvider": {
+    "status": 200,
+    "routed": {
+      "provider": "mock-temp-op",
+      "model": "mock-small",
+      "key": "op-key"
+    }
+  },
+  "deleteVk": 200,
+  "deleteProvider": 200,
+  "providersAfterCleanup": [
+    "mock-a1",
+    "mock-a2",
+    "mock-b1",
+    "mock-c1",
+    "mock-multikey"
+  ]
+}

@@ -1,0 +1,28 @@
+===== resource footprint (same host, same mock, same load) =====
+Date: 2026-09-26 (Asia/Shanghai)
+Host: Windows 11, 16 logical CPUs visible to the Go runtime; small-host class target per Ming-Gateway README (1C2G).
+
+Method:
+  - Bifrost: powershell Get-Process on bifrost-http (Go binary, v2.2.3)
+  - Ming-Gateway: node gateway.js, located by CommandLine match (scripts/measure-gateway.ps1)
+  - Load: node scripts/loadgen.mjs --n 200 --c 10 (200 requests, concurrency 10, non-stream)
+
+Bifrost v2.2.3 (port 17878, sqlite config store + logs store enabled)
+  idle:              RSS 296.5 MB   cpuSec 6.69 (cumulative, incl. startup)   pid 40412
+  after 200x10 load: RSS 238.9 MB   cpuSec 7.03 (+0.34s during load+3s settle)
+  load result:       ok=200 err=0   p50=9 ms  p95=135 ms  wall=349 ms
+
+Ming-Gateway (port 18787, node gateway.js, 4 mock channels)
+  idle:              RSS 61.6 MB    cpuSec 0.12   threads 16
+  after 200x10 load: RSS 66.1 MB    cpuSec 0.34 (+0.22s during load)
+  load result:       ok=200 err=0   p50=10 ms  p95=31 ms   wall=251 ms
+
+Bifrost startup time: ~7-12 s to first healthy response (binary bootstrap measured 6.8 s in logs).
+Ming-Gateway startup time: < 2 s.
+
+Ming-Gateway README's own documented footprint: "内存占用约 40–60MB，1.6G 的小机器完全够用".
+Observed multiplier on the same host: Bifrost ≈ 3.6–4.8x Ming-Gateway RSS.
+
+Notes:
+  - Bifrost's RSS includes the embedded web UI, sqlite config/log stores and the Go runtime arena; it fell back after load (GC), so ~240 MB is the steady state after warm-up.
+  - config.db reached 29 MB after this pilot session (config + content logs while content logging was on).

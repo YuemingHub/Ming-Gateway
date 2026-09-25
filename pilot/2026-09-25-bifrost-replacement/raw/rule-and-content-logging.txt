@@ -1,0 +1,14 @@
+===== rule & content-logging cycles 2026-09-26T01:21:12+08:00 =====
+### cycle A: rule ENABLED + content logging DISABLED
+chain-a-strict enabled = True
+disable_content_logging = True
+--- probe: A
+{"label":"A","failoverStatus":500,"routed":{"provider":"mock-a1","model":"mock-small","key":"a1-primary"},"contentMarkerInLogs":true}
+### cycle B: rule DISABLED + content logging DISABLED
+chain-a-strict enabled = False
+disable_content_logging = True
+--- probe: B
+{"label":"B","failoverStatus":200,"routed":{"provider":"mock-a2","model":"mock-small","key":"a2-secondary","is_fallback":true,"primary_provider":"mock-a1","primary_model":"mock-small"},"contentMarkerInLogs":true}
+### fixture restored: rule disabled, content logging left ON=false (original)
+restored
+===== done =====

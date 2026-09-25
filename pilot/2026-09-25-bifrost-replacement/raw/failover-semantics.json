@@ -1,0 +1,138 @@
+{
+  "at": "2026-09-25T17:09:43.440Z",
+  "gateway": "bifrost v2.2.3",
+  "cases": [
+    {
+      "name": "bare model, all healthy (deterministic primary?)",
+      "vk": "sk-bf-a-norule",
+      "model": "mock-small",
+      "extra": {},
+      "status": 200,
+      "routed": {
+        "provider": "mock-a1",
+        "model": "mock-small",
+        "key": "a1-primary"
+      },
+      "err": null,
+      "upstreamAttempts": [
+        "sk-mock-a1:ok"
+      ]
+    },
+    {
+      "name": "bare model, a1=500 (in-group failover?)",
+      "vk": "sk-bf-a-norule",
+      "model": "mock-small",
+      "extra": {},
+      "status": 200,
+      "routed": {
+        "provider": "mock-a2",
+        "model": "mock-small",
+        "key": "a2-secondary",
+        "is_fallback": true,
+        "primary_provider": "mock-a1",
+        "primary_model": "mock-small"
+      },
+      "err": null,
+      "upstreamAttempts": [
+        "sk-mock-a1:500",
+        "sk-mock-a1:500",
+        "sk-mock-a2:ok"
+      ]
+    },
+    {
+      "name": "bare model, a1+a2=500 (A->B degrade?)",
+      "vk": "sk-bf-ab-norule",
+      "model": "mock-small",
+      "extra": {},
+      "status": 200,
+      "routed": {
+        "provider": "mock-b1",
+        "model": "mock-small",
+        "key": "b1-free",
+        "is_fallback": true,
+        "primary_provider": "mock-a1",
+        "primary_model": "mock-small"
+      },
+      "err": null,
+      "upstreamAttempts": [
+        "sk-mock-a1:500",
+        "sk-mock-a1:500",
+        "sk-mock-a2:500",
+        "sk-mock-a2:500",
+        "sk-mock-b1:ok"
+      ]
+    },
+    {
+      "name": "bare model, a1=401 (auth failure)",
+      "vk": "sk-bf-a-norule",
+      "model": "mock-small",
+      "extra": {},
+      "status": 200,
+      "routed": {
+        "provider": "mock-a2",
+        "model": "mock-small",
+        "key": "a2-secondary",
+        "is_fallback": true,
+        "primary_provider": "mock-a1",
+        "primary_model": "mock-small"
+      },
+      "err": null,
+      "upstreamAttempts": [
+        "sk-mock-a1:401",
+        "sk-mock-a2:ok"
+      ]
+    },
+    {
+      "name": "explicit provider/model, a1=500 (no request fallbacks)",
+      "vk": "sk-bf-a-norule",
+      "model": "mock-a1/mock-small",
+      "extra": {},
+      "status": 500,
+      "routed": {
+        "provider": "mock-a1",
+        "model": "mock-small",
+        "key": "a1-primary"
+      },
+      "err": "upstream exploded (mock)",
+      "upstreamAttempts": [
+        "sk-mock-a1:500",
+        "sk-mock-a1:500"
+      ]
+    },
+    {
+      "name": "explicit provider/model, a1=500 + request fallbacks",
+      "vk": "sk-bf-a-norule",
+      "model": "mock-a1/mock-small",
+      "extra": {
+        "fallbacks": [
+          "mock-a2/mock-small"
+        ]
+      },
+      "status": 200,
+      "routed": {
+        "provider": "mock-a2",
+        "model": "mock-small",
+        "key": "a2-secondary",
+        "is_fallback": true,
+        "primary_provider": "mock-a1",
+        "primary_model": "mock-small"
+      },
+      "err": null,
+      "upstreamAttempts": [
+        "sk-mock-a1:500",
+        "sk-mock-a1:500",
+        "sk-mock-a2:ok"
+      ]
+    },
+    {
+      "name": "bare model, C-only VK, c1=500 (C never falls back)",
+      "vk": "sk-bf-c",
+      "model": "mock-small",
+      "extra": {},
+      "status": 429,
+      "routed": {},
+      "err": "Rate limit exceeded: rate limit violated for vk C expensive group (explicit only): [request limit exceeded (3/3, resets every 1h)]",
+      "upstreamAttempts": []
+    }
+  ]
+}

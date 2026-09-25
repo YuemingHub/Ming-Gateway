@@ -1,0 +1,66 @@
+{
+  "at": "2026-09-25T17:32:05.701Z",
+  "runs": [
+    {
+      "run": 0,
+      "status": 200,
+      "servedBy": "mk-good",
+      "attempts": [
+        "sk-mock-429:429",
+        "sk-mock-mk1:ok"
+      ]
+    },
+    {
+      "run": 1,
+      "status": 200,
+      "servedBy": "mk-good",
+      "attempts": [
+        "sk-mock-mk1:ok"
+      ]
+    },
+    {
+      "run": 2,
+      "status": 200,
+      "servedBy": "mk-good",
+      "attempts": [
+        "sk-mock-429:429",
+        "sk-mock-mk1:ok"
+      ]
+    },
+    {
+      "run": 3,
+      "status": 200,
+      "servedBy": "mk-good",
+      "attempts": [
+        "sk-mock-429:429",
+        "sk-mock-mk1:ok"
+      ]
+    },
+    {
+      "run": 4,
+      "status": 200,
+      "servedBy": "mk-good",
+      "attempts": [
+        "sk-mock-429:429",
+        "sk-mock-mk1:ok"
+      ]
+    },
+    {
+      "run": 5,
+      "status": 200,
+      "servedBy": "mk-good",
+      "attempts": [
+        "sk-mock-mk1:ok"
+      ]
+    }
+  ],
+  "rotationSeen": {
+    "run": 0,
+    "status": 200,
+    "servedBy": "mk-good",
+    "attempts": [
+      "sk-mock-429:429",
+      "sk-mock-mk1:ok"
+    ]
+  }
+}
