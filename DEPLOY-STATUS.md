@@ -188,3 +188,20 @@ ssh fs 'rm -f /etc/nginx/conf.d/teamo-relay.conf && nginx -t && systemctl reload
 - 回滚（二选一）：页面上直接点该渠道「删除」；或恢复写入前的备份
   `cp /root/gw-deploy-20260929-channels.json.bak /opt/api-gateway/data/channels.json && chown gwapp:gwapp /opt/api-gateway/data/channels.json && systemctl restart api-gateway`
   （备份 md5 `4a261ad70c24917f084fcd0392774be5`，即写入前的原状）
+
+### 2026-09-29 · 这三个模型同时开放给 A 组（她回 2）
+
+- **一条渠道只能属于一个组**（`channel.group` 是单值），所以"也给 A 组用"的做法是**再建一条指向同一家的 A 组渠道**，
+  WORK 那条保留不动：现在 `teamo-free@WORK` + `teamo-free-a@A`，同一地址同一 key 两份登记。
+- 保存前先检查 id 未被占用才写入（已知缺陷：`handleChannelSave` 的 `originalId` 回退到 `id`，**撞 id 会静默变成更新**，
+  所以这一步不能省）。结果：`21 → 22`，**原有 21 条逐字段比对 0 改动**。
+- 实测（用 `.env` 里的 A 组 KEY，不打印明文，指纹 `48f459a9de`）：
+  `GET /v1/models` → **A 组能看见 40 个模型，三个 `-free` 全在**；
+  `POST /v1/chat/completions`（`glm-5.3-flash-free`）→ **HTTP 200，由 `teamo-free-a` 服务，3582ms**，日志 `req_1oy8m6`。
+- 未触碰：`teamo-relay.conf` md5 仍是 `fa23a9a7…`、`groups.json` 时间戳仍是她 23:31 那次、nginx 现有站点配置未改。
+- ⚠️ 给客户用要知道的两件事：
+  1. `-free` 是**当日免费额度**，用满上游返回 **402 `free_request_quota_exhausted`**（会原样传给她的客户），次日 0 点刷新；
+     想要稳定供给，应该改用不带 `-free` 的同名付费档（`glm-5.3-flash` 等，清单里都有）。
+  2. 同一上游登记两条 = 状态页上会算成两个渠道的用量，这是有意的取舍（为了两个组都能用）。
+- 回滚：页面上删除 `teamo-free-a`；或 `cp /root/gw-deploy-20260929b-channels.json.bak /opt/api-gateway/data/channels.json
+  && chown gwapp:gwapp /opt/api-gateway/data/channels.json && systemctl restart api-gateway`（该备份 md5 `6b96919c…`）
