@@ -70,7 +70,7 @@ systemctl disable --now api-gateway
 - 接口：`POST /__gw/api/channel/reorder`，body `{"group":"A","ids":[...]}`，`ids` 必须是该组**全部**渠道的新顺序。
 - 实测（2026-09-15）：A 组把 `tokenrhythm` 从第 3 位提到第 1 位，同一个 `glm-5.3-flash` 请求的 `X-GW-Channel` 随之为 `tokenrhythm`；还原后又回到 `opencode-go`。
 
-## 自建分组（代码已完成，生产尚未部署）
+## 自建分组（2026-09-28 已部署到生产）
 
 状态页「渠道分组 → ＋ 新建分组」可以在 A/B/C 之外自己加分组，不用改 `gateway.yaml`、不用重启：
 
@@ -79,13 +79,41 @@ systemctl disable --now api-gateway
 - 新建的组默认**不进降级链**（链仍是 `A → B`），只能用它自己的 KEY 或 `X-GW-Group: 组名` 走到。
 - 每个自建组默认自动生成一把**只授权该组**的调用 KEY，显示与复制都在「我的令牌」面板里（默认打码）。
 - 删除闸门：内置组删不掉；组下还有渠道时删不掉。
-- 上线不需要改任何配置：`gateway.yaml` 不动，`.env` 不动；`gwapp` 对 `data/` 已有写权限。
-- 回滚这一项：`git checkout` 到上一版代码即可；已经建出来的组想留着也不受影响（`groups.json` 不会被代码删除）。
-  想连组一起清掉：`rm /opt/api-gateway/data/groups.json`（先备份），内置 A/B/C 与所有渠道都不受影响。
+- 上线没有改任何配置：`gateway.yaml` 与 `.env` 都没动；`gwapp` 对 `data/` 本来就有写权限。
+
+部署与验收（2026-09-28，全程只写 `data/groups.json`；`data/channels.json` 校验和前后一致，她当天上午刚改过的 20 个渠道一个字节都没变）：
+
+- 替换 5 个代码文件（`gateway.js`、`lib/config.js`、`lib/server.js`、`lib/store.js`、`web/dashboard.html`），
+  上传后逐个 `md5` 与本地一致；`node --check` + `node gateway.js --check` 用**她真实的 gateway.yaml** 通过后才
+  `systemctl restart`。服务仍以 `gwapp` 运行，`healthz=200`，渠道 20 个（启用 18）不变。
+- 生产上的功能验收 22/23：建组 → 组同时出现在状态页卡片、添加渠道的分组下拉、令牌面板 →
+  该组 KEY 鉴权通过但因组内无渠道报 `503 no_available_channel`（**正好证明它不借用 A/B/C 的渠道**）→
+  A 组 KEY 越权指定该组 403 → 删组后它的 KEY 立刻 401、`groups.json` 无残留。
+- 那 1 项不是缺陷：我拿 `deepseek-chat` 做对照，而她的 A 组渠道并没有列这个模型名（都是 `glm-5.3-flash`、
+  `deepseek-v4.1-flash` 这类），按设计就是 503。换成 `glm-5.3-flash` 复测 → **HTTP 200，实际落到 `tokenrhythm`**，
+  并自动跳过了返回 429 的第一路 `step-router-v1`（上游原话 `you have no left credit for step plan`
+  —— Step 套餐额度用完，与网关无关，需要她去 Step 那边充值或先把该渠道停用）。
+- 页面确实换成新版：经 nginx + HTTPS 带着会话取回 `/__gw/`，其 `md5` 与仓库里的 `web/dashboard.html` 完全相同，
+  含 `＋ 新建分组` 与 `/api/group/save`。
+- 其余站点未受影响：`ymai.love` / `ymai.me` / `mingos.cn` 200，`ymai.fun` 跳 `/login` 后 200；
+  `api.ymai.fun` 证书到期时间仍是 `Dec 14 2026`（没有重新签发）。
+
+回滚这一项（只回到部署前那 5 个文件，数据与配置都不动）：
+
+```bash
+ssh fs 'cd /root/gw-deploy-20260928 && cp gateway.js /opt/api-gateway/ \
+  && cp config.js server.js store.js /opt/api-gateway/lib/ \
+  && cp dashboard.html /opt/api-gateway/web/ \
+  && chown root:gwapp /opt/api-gateway/gateway.js /opt/api-gateway/lib/config.js /opt/api-gateway/lib/server.js /opt/api-gateway/lib/store.js /opt/api-gateway/web/dashboard.html \
+  && systemctl restart api-gateway'
+```
+
+已经建出来的组不受回滚影响（想连组一起清掉：`ssh fs 'rm /opt/api-gateway/data/groups.json'`，内置 A/B/C 与所有渠道都不受影响）。
+部署前的代码备份在服务器 `/root/gw-deploy-20260928/`（`code-before-20260928.tgz`，权限 600，含那 5 个原始文件）。
 
 ## 变更记录
 
-- 2026-09-28：**自建分组**上线到代码仓库（生产待部署）。新增 `POST /__gw/api/group/save`、`POST /__gw/api/group/delete`
+- 2026-09-28：**自建分组**已提交并部署到生产（api.ymai.fun）。新增 `POST /__gw/api/group/save`、`POST /__gw/api/group/delete`
   与 `data/groups.json`；状态页新增建组表单、动态分组筛选按钮、自建组删除入口，并去掉了页面前端与后端里
   「只有 A/B/C 三组」的硬编码（分组顺序、筛选按钮、预算块、`需显式指定` 列表）。启动顺序改为**先叠分组、再校验渠道**。
   新增 `test/group-crud.js`（54 项），smoke 128 / ui-e2e 59 / auth-ui 22 全部重跑通过。
