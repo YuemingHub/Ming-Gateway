@@ -137,7 +137,8 @@
   .kpi .sub { font-size: 11.5px; color: var(--muted); margin-top: 5px; }
 
   /* ---------- 分组 ---------- */
-  .groups { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  /* 组数不再固定为 3：自建分组可以一直加，用 auto-fill 让卡片自己排 */
+  .groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
   .group {
     background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 15px 16px;
   }
@@ -155,6 +156,28 @@
   .g-stats div { background: var(--card-2); border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px; }
   .g-stats .k { font-size: 11px; color: var(--muted); }
   .g-stats .v { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  /* 自建分组的标识配色（A/B/C 用上面三档，其余统一走这一档） */
+  .gkey.custom { background: rgba(163,113,247,.16); color: #a371f7; border: 1px solid rgba(163,113,247,.38); }
+  .group .g-foot { display: flex; align-items: center; gap: 8px; margin-top: 11px; flex-wrap: wrap; }
+  .group .g-foot .spacer { margin-left: auto; }
+  .group .g-tag {
+    font-size: 11px; color: var(--muted); border: 1px solid var(--border);
+    border-radius: 5px; padding: 1px 6px; background: var(--card-2);
+  }
+  .group .g-tag.on { color: var(--blue); border-color: rgba(88,166,255,.4); }
+
+  /* ---------- 新建分组 ---------- */
+  .newgroup {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 15px 16px; margin-top: 12px;
+  }
+  .newgroup[hidden] { display: none; }
+  .newgroup .ng-title { font-size: 13px; font-weight: 600; color: var(--blue); margin-bottom: 11px; }
+  .ng-opts { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 13px; }
+  .ng-opt { font-size: 12.5px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+  .ng-foot { display: flex; align-items: center; gap: 10px; margin-top: 13px; }
+  .ng-foot .fhint { flex: 1; min-width: 0; }
+  .ng-foot .spacer { margin-left: auto; }
 
   .budget { margin-top: 12px; border-top: 1px dashed var(--border); padding-top: 11px; }
   .budget .bt { font-size: 12px; color: var(--muted); margin-bottom: 8px; display: flex; gap: 8px; align-items: center; }
@@ -476,13 +499,47 @@
     <div class="cards" id="kpis"></div>
   </section>
 
-  <!-- 3. 分组面板 -->
+  <!-- 3. 分组面板：内置 A/B/C 来自 gateway.yaml，其余由页面自建 -->
   <section id="sec-groups">
     <div class="sec-head">
       <h2>渠道分组</h2>
       <span class="sub" id="policyInfo"></span>
+      <span class="spacer"></span>
+      <button id="btnNewGroup" class="sm">＋ 新建分组</button>
     </div>
     <div class="groups" id="groups"></div>
+
+    <div class="newgroup" id="newGroupBox" hidden>
+      <div class="ng-title">新建分组</div>
+      <div class="fgrid">
+        <div class="fitem">
+          <label class="flabel" for="ngKey">分组标识 <i class="freq">*</i></label>
+          <input type="text" id="ngKey" maxlength="12" placeholder="如 D、WORK、TEST" autocomplete="off" />
+          <span class="fhint">1~12 位，首字符是字母，只允许字母、数字、下划线、连字符（自动转大写）。保存后不可修改，也不能和 A/B/C 重复。</span>
+          <span class="ferr" id="ngErrKey"></span>
+        </div>
+        <div class="fitem">
+          <label class="flabel" for="ngName">分组名称</label>
+          <input type="text" id="ngName" maxlength="24" placeholder="如 工作专用组" autocomplete="off" />
+          <span class="fhint">留空就用分组标识当名字。</span>
+        </div>
+        <div class="fitem full">
+          <label class="flabel" for="ngDesc">说明</label>
+          <input type="text" id="ngDesc" maxlength="60" placeholder="这一组放什么渠道、给谁用" autocomplete="off" />
+        </div>
+      </div>
+      <div class="ng-opts">
+        <label class="ng-opt"><input type="checkbox" id="ngWithKey" checked /> 同时生成一把这一组专用的 KEY</label>
+        <label class="ng-opt"><input type="checkbox" id="ngExplicit" /> 需显式指定才进得去（和 C 组一样严格）</label>
+      </div>
+      <div class="ng-foot">
+        <span class="fhint">新组不会自动进降级链 A → B：只有拿它自己的 KEY 调用，或请求里带 <code>X-GW-Group: 组名</code> 才会走到。生成好的 KEY 在下方「我的令牌」里显示与复制。</span>
+        <span class="spacer"></span>
+        <button class="primary" id="btnCreateGroup">创建</button>
+        <button class="ghost" id="btnCancelNewGroup">取消</button>
+      </div>
+      <div class="ferr" id="ngErr"></div>
+    </div>
   </section>
 
   <!-- 3.5 我的令牌：调用本网关用的 KEY，每组一把，只能调本组模型 -->
@@ -508,12 +565,7 @@
   <section id="sec-channels">
     <div class="sec-head"><h2>渠道列表</h2><span class="sub" id="chCount"></span></div>
     <div class="toolbar">
-      <div class="segs" id="groupFilter">
-        <button data-g="ALL" class="active">全部</button>
-        <button data-g="A">A 组</button>
-        <button data-g="B">B 组</button>
-        <button data-g="C">C 组</button>
-      </div>
+      <div class="segs" id="groupFilter"><!-- 由 renderGroupFilter() 按当前分组动态生成 --></div>
       <input type="search" id="chSearch" placeholder="搜索渠道名 / 模型名…" />
       <button id="btnClearSearch" class="ghost sm">清除</button>
       <span class="spacer"></span>
@@ -766,10 +818,11 @@
   var URL_MODELS_FETCH  = API_BASE + "/api/models/fetch";
   var URL_META          = API_BASE + "/api/meta";
   var URL_TOKENS        = API_BASE + "/api/tokens";
+  var URL_GROUP_SAVE    = API_BASE + "/api/group/save";
+  var URL_GROUP_DELETE  = API_BASE + "/api/group/delete";
 
   var POLL_MS = 5000;
   var MAX_ROWS = 200;
-  var GROUP_ORDER = { A: 0, B: 1, C: 2 };
   var ID_RE = /^[a-zA-Z0-9_-]+$/;
 
   /* /__gw/api/meta 不可用时的兜底，保证弹窗永远打得开、快速填充永远可用 */
@@ -811,7 +864,9 @@
     errorMsg: "",
     lastUpdated: null,
     tokens: null,
-    reordering: false
+    reordering: false,
+    creatingGroup: false,
+    groupFormOpen: false
   };
   /* 哪些令牌被点开显示过 —— 放在 state 外面，自动刷新时不会被重置回打码 */
   var revealedTokens = {};
@@ -1049,6 +1104,30 @@
     }).join("");
   }
 
+  /* ============ 分组：顺序与标识 ============ */
+  /* 展示顺序 = 后端返回的分组顺序（内置 A/B/C 在前，自建组按创建先后）。
+     以前这里硬编码 {A:0,B:1,C:2}，自建组一律排到最后且彼此不稳定，加一个组就得改一次代码。 */
+  function groupKeys() {
+    var gs = (state.status && state.status.groups) || null;
+    var ks = gs ? Object.keys(gs) : [];
+    return ks.length ? ks : ["A", "B", "C"];
+  }
+  function rankMap() {
+    var m = {};
+    groupKeys().forEach(function (k, i) { m[k] = i; });
+    return m;
+  }
+  function isCustomGroup(k) {
+    var g = (state.status && state.status.groups && state.status.groups[k]) || null;
+    return !!(g && g.builtin === false);
+  }
+
+  /* A/B/C 用固定配色，自建组统一用第四档；class 名会进 CSS，所以只认字母数字 */
+  function gkeyChip(k) {
+    var cls = /^(A|B|C)$/.test(String(k)) ? String(k) : "custom";
+    return '<span class="gkey ' + cls + '">' + esc(k) + '</span>';
+  }
+
   /* ============ 渲染：分组 ============ */
   function renderGroups() {
     var s = state.status;
@@ -1059,36 +1138,147 @@
     }
 
     var p = s.policy || {};
-    var chain = Array.isArray(p.fallbackChain) ? p.fallbackChain.join(" → ") : "—";
-    $("policyInfo").textContent = "降级链：" + chain + "　|　C 组需显式指定：" + (p.cGroupRequiresExplicit ? "是" : "否");
+    var chain = Array.isArray(p.fallbackChain) && p.fallbackChain.length ? p.fallbackChain.join(" → ") : "（未启用降级链）";
+    var explicit = Array.isArray(p.explicitGroups) && p.explicitGroups.length ? p.explicitGroups.join("、") : "无";
+    $("policyInfo").textContent = "降级链：" + chain + "　|　需显式指定才进得去的组：" + explicit;
 
     var gs = s.groups || {};
-    var keys = Object.keys(gs).sort(function (a, b) {
-      return (GROUP_ORDER[a] === undefined ? 99 : GROUP_ORDER[a]) - (GROUP_ORDER[b] === undefined ? 99 : GROUP_ORDER[b]);
-    });
+    var keys = groupKeys();
 
     $("groups").innerHTML = keys.map(function (k) {
       var g = gs[k] || {};
       var total = num(g.total), healthy = num(g.healthy);
       var hcolor = total === 0 ? "var(--muted)" : (healthy === total ? "var(--green)" : (healthy === 0 ? "var(--red)" : "var(--yellow)"));
 
-      var budgetHtml = "";
-      if (k === "C" && s.budget && s.budget.C) {
-        budgetHtml = renderBudget(s.budget.C);
-      }
+      // 预算块对任何组都渲染：以前只判断 k === "C"，自建组配了预算也不显示
+      var budgetHtml = (g.budget && s.budget && s.budget[k]) ? renderBudget(s.budget[k], k) : "";
+
+      var tags = "";
+      if (g.requireExplicit) tags += '<span class="g-tag on">需显式指定</span>';
+      if (g.hasKey) tags += '<span class="g-tag">专用 KEY</span>';
+      if (!g.builtin) tags += '<span class="g-tag">自建</span>';
+      var foot = '<div class="g-foot">' + tags +
+        (!g.builtin ? '<span class="spacer"></span><button class="sm ghost" data-delgroup="' + esc(k) + '">删除分组</button>' : "") +
+        '</div>';
 
       return '<div class="group">' +
-        '<div class="g-top"><span class="gkey ' + esc(k) + '">' + esc(k) + '</span><span class="g-name">' + esc(dash(g.name)) + '</span></div>' +
+        '<div class="g-top">' + gkeyChip(k) + '<span class="g-name">' + esc(dash(g.name)) + '</span></div>' +
         '<div class="g-desc">' + esc(dash(g.desc)) + '</div>' +
         '<div class="g-stats">' +
           '<div><div class="k">健康 / 总数</div><div class="v" style="color:' + hcolor + '">' + healthy + " / " + total + '</div></div>' +
           '<div><div class="k">请求数</div><div class="v">' + fmtInt(g.requests) + '</div></div>' +
           '<div><div class="k">成本</div><div class="v">' + fmtUSD(g.costUSD) + '</div></div>' +
-        '</div>' + budgetHtml + '</div>';
+        '</div>' + foot + budgetHtml + '</div>';
     }).join("");
+
+    Array.prototype.forEach.call($("groups").querySelectorAll("button[data-delgroup]"), function (b) {
+      b.onclick = function () { deleteGroup(b.getAttribute("data-delgroup")); };
+    });
   }
 
-  function renderBudget(b) {
+  /* 渠道表上方的组筛选：随分组数量动态生成，不再写死 A/B/C 三个按钮 */
+  function renderGroupFilter() {
+    var box = $("groupFilter");
+    if (!box) return;
+    var keys = groupKeys();
+    // 筛选中的组被删掉了 → 回到「全部」，否则列表会莫名空掉
+    if (state.filterGroup !== "ALL" && keys.indexOf(state.filterGroup) < 0) state.filterGroup = "ALL";
+    var html = '<button data-g="ALL"' + (state.filterGroup === "ALL" ? ' class="active"' : "") + '>全部</button>';
+    html += keys.map(function (k) {
+      return '<button data-g="' + esc(k) + '"' + (state.filterGroup === k ? ' class="active"' : "") + ">" + esc(k) + " 组</button>";
+    }).join("");
+    box.innerHTML = html;
+    Array.prototype.forEach.call(box.querySelectorAll("button"), function (b) {
+      b.onclick = function () {
+        state.filterGroup = b.getAttribute("data-g");
+        renderGroupFilter();
+        renderChannels();
+      };
+    });
+  }
+
+  var NG_KEY_RE = /^[A-Za-z][A-Za-z0-9_-]{0,11}$/;
+
+  /* 「添加渠道」弹窗里的分组下拉是缓存的（ensureMeta 只拉一次）。
+     增删分组后必须作废它，否则新建的组在弹窗里选不到 —— 又是「加了却用不上」。 */
+  function invalidateGroupMeta() {
+    mdl.metaLoaded = false;
+    mdl.meta = null;
+  }
+
+  function showNewGroupForm(show) {
+    var box = $("newGroupBox");
+    if (!box) return;
+    // 开合状态记在 state 里，而不是回读 DOM 的 hidden：
+    // 同一按钮若被绑上两次监听，回读式写法会「打开后立刻被第二次点击关掉」，
+    // 表现为按钮点了没反应。以 state 为准时，两次同样的调用结果一致。
+    state.groupFormOpen = !!show;
+    box.hidden = !state.groupFormOpen;
+    if (state.groupFormOpen) { $("ngKey").focus(); } else { $("ngErr").textContent = ""; $("ngErrKey").textContent = ""; }
+  }
+
+  /**
+   * 新建分组（并默认生成一把该组专用 KEY）。
+   * KEY 明文不在这里的响应里，创建成功后回到「我的令牌」面板查看/复制。
+   */
+  async function createGroup() {
+    if (state.creatingGroup) return;
+    var key = $("ngKey").value.trim().toUpperCase();
+    var err = $("ngErr");
+    var errKey = $("ngErrKey");
+    err.textContent = "";
+    errKey.textContent = "";
+
+    if (!key) { errKey.textContent = "请填写分组标识"; $("ngKey").focus(); return; }
+    if (!NG_KEY_RE.test(key)) {
+      errKey.textContent = "分组标识只能是 1~12 位：首字符字母，之后可含字母、数字、下划线、连字符";
+      $("ngKey").focus();
+      return;
+    }
+    if (groupKeys().indexOf(key) >= 0) { errKey.textContent = "分组 " + key + " 已经存在，请换一个标识"; $("ngKey").focus(); return; }
+
+    state.creatingGroup = true;
+    $("btnCreateGroup").disabled = true;
+    try {
+      var r = await apiPostJson(URL_GROUP_SAVE, {
+        key: key,
+        name: $("ngName").value.trim(),
+        desc: $("ngDesc").value.trim(),
+        requireExplicit: $("ngExplicit").checked,
+        withKey: $("ngWithKey").checked
+      });
+      if (!r || r.ok === false) {
+        err.textContent = "创建失败：" + ((r && r.error) || "接口没有返回结果");
+        return;
+      }
+      toast(r.message || ("已新建 " + key + " 组"), "ok");
+      $("ngKey").value = ""; $("ngName").value = ""; $("ngDesc").value = "";
+      $("ngExplicit").checked = false;
+      showNewGroupForm(false);
+      invalidateGroupMeta();
+      await refresh(true);
+    } catch (e) {
+      err.textContent = "创建失败：" + ((e && e.message) || "未知错误");
+    } finally {
+      state.creatingGroup = false;
+      $("btnCreateGroup").disabled = false;
+    }
+  }
+
+  async function deleteGroup(key) {
+    if (!window.confirm("确定删除 " + key + " 组吗？\n\n这一组的专用 KEY 会立刻失效。组里还有渠道时删不掉（会提示你先处理渠道）。")) return;
+    try {
+      var r = await apiPostJson(URL_GROUP_DELETE, { key: key });
+      if (!r || r.ok === false) { toast("删除失败：" + ((r && r.error) || "接口没有返回结果"), "err"); return; }
+      toast("已删除 " + key + " 组", "ok");
+      invalidateGroupMeta();
+      await refresh(true);
+    } catch (e) {
+      toast("删除失败：" + ((e && e.message) || "未知错误"), "err");
+    }
+  }
+
+  function renderBudget(b, groupKey) {
     var tripped = !!b.tripped;
     function row(label, used, limit, remain) {
       var pctv = num(limit) > 0 ? (num(used) / num(limit)) * 100 : 0;
@@ -1098,7 +1288,7 @@
         '<span class="r">' + fmtUSD2(used) + " / " + fmtUSD2(limit) + "　余 " + fmtUSD2(remain) + "　" + pctv.toFixed(1) + '%</span></div>' +
         '<div class="meter ' + cls + '"><i style="width:' + w.toFixed(2) + '%"></i></div></div>';
     }
-    var html = '<div class="budget"><div class="bt">预算（C 组）</div>' +
+    var html = '<div class="budget"><div class="bt">预算（' + esc(groupKey) + " 组）</div>" +
       row("日预算", b.dailyUsedUSD, b.dailyLimitUSD, b.dailyRemainUSD) +
       row("月预算", b.monthlyUsedUSD, b.monthlyLimitUSD, b.monthlyRemainUSD);
     if (b.tripped) {
@@ -1120,9 +1310,10 @@
       var models = Array.isArray(c.models) ? c.models.join(" ") : "";
       return (name + " " + models).toLowerCase().indexOf(kw) >= 0;
     });
+    var rank = rankMap();
     list.sort(function (a, b) {
-      var ga = GROUP_ORDER[a.group] === undefined ? 99 : GROUP_ORDER[a.group];
-      var gb = GROUP_ORDER[b.group] === undefined ? 99 : GROUP_ORDER[b.group];
+      var ga = rank[a.group] === undefined ? 99 : rank[a.group];
+      var gb = rank[b.group] === undefined ? 99 : rank[b.group];
       if (ga !== gb) return ga - gb;
       // 组内按「消耗顺序」排：列表里从上往下就是这个顺序，与网关实际挑渠道的顺序一致
       var oa = typeof a.order === "number" ? a.order : 9999;
@@ -1174,7 +1365,7 @@
     body.innerHTML = list.map(function (t) {
       var gs = (t.groups && t.groups.length) ? t.groups : ["全组"];
       var chips = gs.map(function (g) {
-        return '<span class="gkey ' + esc(g) + '">' + esc(g) + '</span>';
+        return gkeyChip(g);
       }).join(" ");
       var shown = !!revealedTokens[t.index];
       var keyCell = shown
@@ -1309,7 +1500,7 @@
 
       return '<tr class="' + cls.join(" ") + '">' +
         '<td><div><b>' + esc(c.name || c.id) + '</b></div><div class="muted mono">' + esc(c.id || "") + '</div></td>' +
-        '<td><span class="gkey ' + esc(c.group) + '">' + esc(c.group || "?") + '</span></td>' +
+        '<td>' + gkeyChip(c.group) + '</td>' +
         '<td>' + esc(dash(c.provider)) + '</td>' +
         '<td class="muted">' + esc(dash(c.plan)) + '</td>' +
         '<td>' + modelsCell(c) + '</td>' +
@@ -1424,7 +1615,7 @@
       return '<tr class="' + (ok ? "" : "fail") + '">' +
         '<td class="muted mono">' + fmtTime(l.ts) + '</td>' +
         '<td class="mono">' + esc(dash(l.model)) + '</td>' +
-        '<td><span class="gkey ' + esc(l.group || "?") + '">' + esc(l.group || "?") + '</span></td>' +
+        '<td>' + gkeyChip(l.group || "?") + '</td>' +
         '<td>' + esc(dash(l.channelName || l.channelId)) + '</td>' +
         '<td class="num" style="color:' + statusColor + '">' + fmtInt(l.status) + '</td>' +
         '<td class="num">' + fmtMs(l.latencyMs) + '</td>' +
@@ -1456,6 +1647,7 @@
     renderKpis();
     renderGroups();
     renderTokens();
+    renderGroupFilter();
     renderChannels();
     renderUsage();
     renderLogs();
@@ -2280,14 +2472,7 @@
     $("btnPurge").addEventListener("click", function () {
       if (window.confirm("确定清空响应缓存吗？")) purgeCache();
     });
-    Array.prototype.forEach.call($("groupFilter").querySelectorAll("button"), function (b) {
-      b.addEventListener("click", function () {
-        Array.prototype.forEach.call($("groupFilter").querySelectorAll("button"), function (x) { x.className = ""; });
-        b.className = "active";
-        state.filterGroup = b.getAttribute("data-g");
-        renderChannels();
-      });
-    });
+    // 分组筛选按钮随分组动态生成，点击在 renderGroupFilter() 里逐个绑定
     var si = $("chSearch");
     var timer = null;
     si.addEventListener("input", function () {
@@ -2296,6 +2481,18 @@
     });
     $("btnClearSearch").addEventListener("click", function () { si.value = ""; state.search = ""; renderChannels(); });
     $("btnAddChannel").addEventListener("click", function () { openChannelModal("create"); });
+    $("btnNewGroup").addEventListener("click", function () { showNewGroupForm(!state.groupFormOpen); });
+    $("btnCancelNewGroup").addEventListener("click", function () { showNewGroupForm(false); });
+    $("btnCreateGroup").addEventListener("click", createGroup);
+    // 标识输入统一转大写：组 key 在后端就是大写的，页面不提前统一会出现「d 和 D 是两个组」的错觉
+    $("ngKey").addEventListener("input", function () {
+      var p = $("ngKey").selectionStart;
+      var v = $("ngKey").value.toUpperCase();
+      if (v !== $("ngKey").value) {
+        $("ngKey").value = v;
+        $("ngKey").setSelectionRange(p, p);
+      }
+    });
     $("btnReloadCh").addEventListener("click", reloadChannels);
     document.addEventListener("keydown", function (e) {
       if (e.key === "r" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); refresh(true); }

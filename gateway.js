@@ -15,8 +15,8 @@
 
 const path = require('path');
 const fs = require('fs');
-const { load, validateChannelList } = require('./lib/config');
-const { ChannelStore } = require('./lib/store');
+const { load, validateChannelList, applyStoredGroups } = require('./lib/config');
+const { ChannelStore, GroupStore } = require('./lib/store');
 const { GatewayServer, VERSION } = require('./lib/server');
 
 /**
@@ -26,9 +26,23 @@ const { GatewayServer, VERSION } = require('./lib/server');
  *   - 页面从未保存过 → 完全用 YAML 的 channels
  *   - 页面保存过 → data/channels.json 整体接管渠道，YAML 继续提供
  *     server / groups / tokens / routes 这些「策略」配置
+ *
+ * 分组同理，但只叠加「页面新建的组」：内置 A/B/C 永远以 YAML 为真源。
+ * 顺序上必须先叠组、再校验渠道 —— 渠道里写着 `group: D` 时，
+ * D 若只存在于 data/groups.json，先校验就会报「组 D 未定义」并整体回退到 YAML 渠道。
  */
 function buildConfig(configPath) {
   const config = load(configPath, { allowEmptyChannels: true });
+
+  const groupStore = new GroupStore(config.server.dataDir);
+  if (groupStore.exists()) {
+    const r = applyStoredGroups(config, groupStore.list() || []);
+    for (const e of r.errors) console.warn('[分组库告警] ' + e);
+    config.groups = r.groups;
+    config.tokens = r.tokens;
+    config.__groupSource = 'store';
+  }
+
   const store = new ChannelStore(config.server.dataDir);
 
   if (store.exists()) {
@@ -100,6 +114,8 @@ function main() {
   if (args.host) config.server.host = args.host;
 
   const fromStore = config.__channelSource === 'store';
+  const baseGroups = config.__baseGroups || {};
+  const customGroups = Object.keys(config.groups).filter((k) => !baseGroups[k]);
 
   // 渠道写的是 ${ENV_VAR}，但环境里没这个值 —— 展开后为空，运行时会一律被上游 401。
   // 这种「配了却不通」最难排查，所以启动时就把话说清楚。
@@ -117,7 +133,8 @@ function main() {
     console.log(`  渠道：${config.channels.length} 个（启用 ${config.channels.filter((c) => c.enabled).length} 个）`);
     for (const [k, g] of Object.entries(config.groups)) {
       const n = config.channels.filter((c) => c.group === k).length;
-      console.log(`    ${k} ${g.name}：${n} 个渠道`);
+      const tag = g.builtin ? '' : '  ← 页面新建';
+      console.log(`    ${k} ${g.name}：${n} 个渠道${tag}`);
     }
     console.log(`  令牌：${config.tokens.length} 个`);
     if (config.server.auth && config.server.auth.enabled) {
@@ -139,6 +156,9 @@ function main() {
       `  渠道      ${config.channels.length} 个（启用 ${config.channels.filter((c) => c.enabled).length}）` +
         `  [来源：${fromStore ? 'data/channels.json' : 'gateway.yaml'}]`
     );
+    if (customGroups.length) {
+      console.log(`  自建分组  ${customGroups.join('、')}  [来源：data/groups.json]`);
+    }
     console.log(`  降级链    ${config.fallback.chain.join(' → ')}   （C 组需显式指定）`);
     console.log(
       `  客户端鉴权 ${config.tokens.length ? '已开启（' + config.tokens.length + ' 个令牌，需带 Authorization: Bearer）' : '未开启 —— 任何能访问该端口的人都可直接调用'}` +
