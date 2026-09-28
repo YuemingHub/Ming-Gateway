@@ -135,3 +135,43 @@ ssh fs 'cd /root/gw-deploy-20260928 && cp gateway.js /opt/api-gateway/ \
 - unit 里已加 `User=gwapp` / `Group=gwapp`；原始（root 版）unit 备份为 `/etc/systemd/system/api-gateway.service.bak-20260915-root`
 
 实测以 `gwapp` 身份无法读取 `/root/.ssh/authorized_keys`、`/etc/wireguard/server.key`，以及 family-os / world-space 的 `.env`——即网关万一被攻破，损失被限制在 `/opt/api-gateway` 内。
+
+## TeamoRouter 本机中转（2026-09-29 上线）
+
+背景：`https://api.teamorouter.com` 在页面里添加时报 `fetch failed`。实测结论**不是配置错也不是对方宕机**：
+
+- 同一台服务器、同一 IP `43.128.25.159`：TLS 握手时**报出 teamorouter 域名 → 0.1 秒内被重置**；不报域名（只在普通请求头里带域名）→ 0.118 秒握手成功并正常应答。80 端口的 `Host` 头同样被重置 → 按**域名**拦，与 DNS 无关（改 `/etc/hosts` 无效）。
+- 对照（同一台服务器同时测）：`api.deepseek.com` 401、`api.groq.com` 403 都正常 → 出口本身没坏；`api.openai.com` 则是超时（另一种拦法）。
+- 这类拦截对境外站点普遍存在，因此没有把它做进网关产品代码，只在本机加了一层中转。
+
+做法：`/etc/nginx/conf.d/teamo-relay.conf`（内容存仓 `deploy/teamo-relay.conf`，两边 md5 都是 `fa23a9a717ab227daade9d8827b14988`）。nginx 对上游**默认不发 SNI**，正好走通；**现有 ymai.fun / api.ymai.fun 等配置文件一个字未改**，只新增这一个文件。
+
+验收（2026-09-29 00:36–00:42 实测）：
+
+1. `curl http://127.0.0.1:8471/v1/models`（不带 key）→ **HTTP 401 + 上游原话**，证明中转打到真上游
+2. 网关管理面「获取模型列表」填 `http://127.0.0.1:8471/v1`（不带 key）→ HTTP 200 / `status=401` / 上游原话，证明**网关 Node fetch 这条路也通**
+3. 反向对照：同一段代码、只把地址换回 `https://api.teamorouter.com/v1` → `status=0 fetch failed`（这条判据能变红，不是空跑）
+4. 带上真实 key → **共 45 个模型**，`deepseek-flash-free` / `deepseek-v4-flash-free` / `glm-5.3-flash-free` 三个都在
+5. 真实对话 `glm-5.3-flash-free` → **HTTP 200**，返回内容正常，usage 记录 `282` tokens
+6. 上游证书校验**是开着的**（`proxy_ssl_verify on` + `verify_depth 3`；默认 depth=1 会让 Let's Encrypt 的链报 `certificate chain too long` → 502，已修正）
+7. 中转只绑回环：`ss -ltn` 里 `8471` 只有 `127.0.0.1`，`0.0.0.0:8471` 计数为 0；非 `/v1/` 路径一律 404
+8. 现有站点全部照旧：`ymai.fun 302`、`mingos.cn 200`、`www.mingos.cn 301`、`ymai.love 200`、`api.ymai.fun 302`、`/healthz 200`；nginx master PID 仍是 9-16 那个（reload 未重启进程）
+9. 网关数据未被写入：渠道数 20、`data/groups.json` 1 个自建组，均是她自己在页面上建的
+
+在页面里怎么填（我没有替她保存渠道，建渠道需要她点头并指定归哪个组）：
+
+- 上游地址：`http://127.0.0.1:8471/v1`（**不是** teamorouter 的域名）
+- 格式：OpenAI 兼容；模型名从「一键获取」里点（45 个都能列出来）
+- key：`sk-teamo-` 开头那一把（已实测有效；她桌面那个 txt 里是明文，建议之后挪走或换一把）
+
+代价与注意：
+
+- 网关 ↔ 中转这一跳是**明文 HTTP，但只在 127.0.0.1 上**，出不了机器；中转 ↔ 上游仍是加密且校验证书
+- `proxy_pass` 里的主机名在 nginx 启动/reload 时解析一次。**对方换 IP 后需要 `systemctl reload nginx`** 才跟上（可先按报错 `502 connect() failed` 判断）
+- JEV 在这条路上可达（`POST /v1/systemone` → 400 `model is required`，路由存在），但它是**判断接口、非 OpenAI 聊天格式**，我们的网关转不了，模型清单里那把 `typesafe-ai/jev` 不能当聊天模型用
+
+回滚（一条命令，不影响任何站点）：
+
+```bash
+ssh fs 'rm -f /etc/nginx/conf.d/teamo-relay.conf && nginx -t && systemctl reload nginx'
+```
