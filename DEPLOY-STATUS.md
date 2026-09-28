@@ -175,3 +175,16 @@ ssh fs 'cd /root/gw-deploy-20260928 && cp gateway.js /opt/api-gateway/ \
 ```bash
 ssh fs 'rm -f /etc/nginx/conf.d/teamo-relay.conf && nginx -t && systemctl reload nginx'
 ```
+
+### 2026-09-29 · 渠道 `teamo-free` 已加进 WORK 组（她批准的回 2）
+
+- 经管理面同一套接口保存（等价于她点「保存」），只新增一条：`20 → 21`，**原有 20 条逐字段比对 0 改动**
+- 内容：`id=teamo-free`，名称「TeamoRouter 免费档」，组 `WORK`，`baseUrl=http://127.0.0.1:8471/v1`，
+  模型 3 个（`deepseek-flash-free` / `deepseek-v4-flash-free` / `glm-5.3-flash-free`），`order=1`（排在她的 `deep` 之后）
+- key：用她本地文件里那把，未打印；落盘后核对**长度 57、sha256 前 10 位 `bafa8b7605`**，与传入的一致
+- **端到端实测**：用 WORK 组自己的 KEY 打 `/v1/chat/completions`（`glm-5.3-flash-free`）→
+  **HTTP 200，由渠道 `teamo-free` 服务，3392ms**，日志 `req_1mson5`；回答正常，usage 105 tokens
+- WORK 组 KEY 与 A/B/C 相互隔离：只有 WORK 的 KEY 用得着这三个模型（A/B/C 的 KEY 打它会找不到渠道）
+- 回滚（二选一）：页面上直接点该渠道「删除」；或恢复写入前的备份
+  `cp /root/gw-deploy-20260929-channels.json.bak /opt/api-gateway/data/channels.json && chown gwapp:gwapp /opt/api-gateway/data/channels.json && systemctl restart api-gateway`
+  （备份 md5 `4a261ad70c24917f084fcd0392774be5`，即写入前的原状）
