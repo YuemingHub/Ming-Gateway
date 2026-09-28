@@ -59,6 +59,9 @@ node test/prod-hardening.js
 
 # 5f. 真实上游联调（需要 .env 里已填 OPENCODE_GO_API_KEY；没填会自动跳过）
 node test/real-upstream.js
+
+# 5g. 自建分组回归（54 项断言）：建组 → 该组专用 KEY 真实打到上游 → 组隔离 → 删除闸门 → 重启后仍在
+node test/group-crud.js
 ```
 
 改一行代码即可接入 —— 把原来指向 `https://api.deepseek.com` 的 `base_url` 换成网关地址就行：
@@ -150,6 +153,39 @@ curl http://127.0.0.1:8787/v1/chat/completions \
 
 > 组内轮换与跨组降级是两件事：**组内随便换渠道，跨组必须显式允许。**
 
+### A/B/C 之外自己加分组
+
+状态页「渠道分组」区的 **＋ 新建分组** 可以直接建组，不用改 `gateway.yaml`、不用重启：
+
+| 填什么 | 说明 |
+|---|---|
+| 分组标识 | 1~12 位，首字符字母，之后可含大写字母/数字/`_`/`-`（自动转大写）。保存后不可改，且不能占用 `A`/`B`/`C`/`ALL` |
+| 名称 / 说明 | 随意，只影响显示 |
+| 同时生成专用 KEY | 默认勾选：随机生成一把**只授权这一组**的客户端令牌 |
+| 需显式指定 | 勾上后与 C 组一样严格（`requireExplicit`） |
+
+新建的组自带三条规则：
+
+- **不进降级链**：`fallback.chain` 仍是 `A → B`，新组不会因为「它也存在」就分到日常流量；
+  走到它只有两条路 —— 用它自己的 KEY，或请求里带 `X-GW-Group: 组名`。
+- **按组隔离同样生效**：它的 KEY 只在这一组的渠道里轮换，这组全挂就报 `503`，不会串到 A/B。
+- **删除有闸门**：内置 `A`/`B`/`C` 不能从页面删（它们的真源是 YAML，页面删了重启就回来，
+  那种「说删了又没删」最难查）；组下还挂着渠道时也删不掉，得先处理渠道。
+
+数据落在 `data/groups.json`（权限 0600，含那把自动生成 KEY 的明文）：
+
+```json
+{ "version": 1, "groups": [
+  { "key": "WORK", "name": "工作专用组", "desc": "", "requireExplicit": false,
+    "token": { "key": "…", "enabled": true }, "createdAt": "…" }
+] }
+```
+
+`gateway.yaml` 里的分组始终是基线，页面**只能新增、不能覆盖同名组** —— 万一 YAML 里也写了
+`WORK`，以 YAML 为准。删掉 `data/groups.json` 就移除所有自建分组（连同它们的 KEY）。
+
+给它建渠道与平常一样：添加渠道时分组下拉里就有 `WORK`。
+
 ---
 
 ## 性能
@@ -206,6 +242,10 @@ curl http://127.0.0.1:8787/v1/chat/completions \
 |---|---|---|
 | 高 | `data/channels.json` | 你在状态页点过「保存/启用/停用/删除」之后，渠道就以这个文件为准 |
 | 低 | `gateway.yaml` 的 `channels` | 页面还没保存过时的基线；页面只要保存过一次，就被整体接管 |
+
+分组也分两层，但规则不同：`gateway.yaml` 的组是基线，`data/groups.json` 只放**页面新建的组**
+（同名时以 YAML 为准，页面不能覆盖内置组）。因为渠道要校验「这个组存不存在」，
+启动时是**先叠分组、再校验渠道** —— 顺序反了，写着 `group: WORK` 的渠道会被误判成「组未定义」而整库回退。
 
 **为什么分开存，而不是回写 YAML？**
 
@@ -335,6 +375,8 @@ curl http://127.0.0.1:8787/v1/chat/completions \
 | `POST /__gw/api/channel/delete` | 删除渠道 `{"id":"x"}` |
 | `POST /__gw/api/channel/toggle` | 启用/停用渠道 `{"id":"x","enabled":false}`（会落盘） |
 | `POST /__gw/api/channel/reorder` | 调整组内**消耗顺序** `{"group":"A","ids":["a1","a2","a3"]}` —— `ids` 必须是该组全部渠道的新顺序，落盘并热更新；状态页列表里的 ▲▼ 就是调它 |
+| `POST /__gw/api/group/save` | 新建分组 `{"key":"work","name":"工作专用组","requireExplicit":false,"withKey":true}` —— key 自动转大写，`withKey` 默认同时生成一把只授权该组的 KEY。**响应不回传 KEY 明文**，去 `/api/tokens` 看 |
+| `POST /__gw/api/group/delete` | 删除自建分组 `{"key":"WORK"}` —— 内置组与「组下还有渠道」都会被拒 |
 | `POST /__gw/api/channel/test` | 连通性测试 `{"id":"x"}` 或 `{"channel":{...}}`，失败也返回 200，原因在 `message`；**顺带把上游模型清单一起带回**（`models` 字段） |
 | `POST /__gw/api/models/fetch` | 一键获取模型列表 `{"id":"x"}` 或 `{"channel":{...}}`，返回 `{ok,models,count,via,status,latencyMs,message}` |
 | `POST /__gw/api/channel/reset` | 丢弃 `data/channels.json`，回到 `gateway.yaml` 基线（自动备份为 `.bak`） |
@@ -431,6 +473,16 @@ curl http://127.0.0.1:8787/healthz
 | 延迟 | 并发 40 的 p50/p95/p99、流式首字节 TTFB（不缓冲整段） |
 | 稳定性 | 300 请求持续压力：全部成功、无未捕获异常、堆内存增长可控 |
 
+**自建分组回归**：`node test/group-crud.js` 共 54 项断言，盯的是「加了新组到底能不能用」：
+
+| 组 | 覆盖内容 |
+|---|---|
+| 建组 | 小写 key 规范化成大写、`data/groups.json` 落盘、`/api/meta` 与 `/api/status` 都认得它、内置 A/B/C 一个不少、新组不进降级链 |
+| 专用 KEY | 令牌面板出现「只授权这一组」的 KEY、形状正确、YAML 里的原令牌不被冲掉；空组的 KEY 在 `/v1/models` 里看不到别的组的模型（并用 A 组 KEY 做正对照，防「断言因请求根本没发出去而假绿」） |
+| 真调用 | 在自建组里建渠道 → 用它的 KEY 打到 mock 上游（响应内容与 `X-GW-Channel` 双重确认）→ A 组 KEY 打不到它、越权指定它 403 |
+| 闸门 | 与内置组同名 / 重复标识 / 非法标识 / 保留字 `ALL` / 超长全部被拒；内置组不能删；组下还有渠道时不能删，且两次失败的删除不改动现状 |
+| 重启 | 复刻 `gateway.js` 的「先叠组、再校验渠道」顺序：组、KEY、写着 `group: D` 的渠道都还在，C 组的 `requireExplicit` 没被抹掉 |
+
 **生产加固回归**：`node test/prod-hardening.js` 共 47 项断言，盯的是「上线才会要命」的那类缺陷：
 
 | 组 | 覆盖内容 |
@@ -472,5 +524,7 @@ curl http://127.0.0.1:8787/healthz
 - **协议覆盖**：主要面向 OpenAI 兼容接口（绝大多数国产厂商都兼容）；Anthropic / Gemini 做了鉴权头适配，但未做完整的协议转换。
 - **价格表**：内置的是公开参考价，厂商随时调价，请在 `pricing` 段按实际账单价覆盖。
 - **流式不支持中途重试**：一旦开始向客户端吐字节就无法换渠道（响应头已发出），这是 HTTP 的固有约束。
-- **页面只管渠道**：分组策略、预算、降级链、客户端令牌仍在 `gateway.yaml` 里手改（这些是低频策略，不适合页面随手改）。改完需要重启。
-- **`data/channels.json` 可能含明文 Key**：用 `${ENV_VAR}` 填写就不会落明文，建议优先这样填。
+- **页面管渠道 + 新建分组**：预算、限流、降级链、`gateway.yaml` 里的客户端令牌仍是低频策略，
+  要改得动手编辑 YAML 并重启。页面新建的分组（含它自动生成的 KEY）落在 `data/groups.json`，改完立刻生效。
+- **`data/channels.json` 与 `data/groups.json` 都可能含明文 Key**：前者用 `${ENV_VAR}` 填写就不会落明文，
+  建议优先这样填；后者的 KEY 是网关随机生成的调用令牌，两个文件都按 0600 写入、都被 `.gitignore` 忽略。

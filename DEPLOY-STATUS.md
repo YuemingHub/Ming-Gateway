@@ -70,7 +70,25 @@ systemctl disable --now api-gateway
 - 接口：`POST /__gw/api/channel/reorder`，body `{"group":"A","ids":[...]}`，`ids` 必须是该组**全部**渠道的新顺序。
 - 实测（2026-09-15）：A 组把 `tokenrhythm` 从第 3 位提到第 1 位，同一个 `glm-5.3-flash` 请求的 `X-GW-Channel` 随之为 `tokenrhythm`；还原后又回到 `opencode-go`。
 
+## 自建分组（代码已完成，生产尚未部署）
+
+状态页「渠道分组 → ＋ 新建分组」可以在 A/B/C 之外自己加分组，不用改 `gateway.yaml`、不用重启：
+
+- 数据落在 `/opt/api-gateway/data/groups.json`（网关写入时自动 `chmod 600`），里面含**自建组专用 KEY 的明文**；
+  内置 A/B/C 不在这个文件里，仍以 `gateway.yaml` 为真源。
+- 新建的组默认**不进降级链**（链仍是 `A → B`），只能用它自己的 KEY 或 `X-GW-Group: 组名` 走到。
+- 每个自建组默认自动生成一把**只授权该组**的调用 KEY，显示与复制都在「我的令牌」面板里（默认打码）。
+- 删除闸门：内置组删不掉；组下还有渠道时删不掉。
+- 上线不需要改任何配置：`gateway.yaml` 不动，`.env` 不动；`gwapp` 对 `data/` 已有写权限。
+- 回滚这一项：`git checkout` 到上一版代码即可；已经建出来的组想留着也不受影响（`groups.json` 不会被代码删除）。
+  想连组一起清掉：`rm /opt/api-gateway/data/groups.json`（先备份），内置 A/B/C 与所有渠道都不受影响。
+
 ## 变更记录
+
+- 2026-09-28：**自建分组**上线到代码仓库（生产待部署）。新增 `POST /__gw/api/group/save`、`POST /__gw/api/group/delete`
+  与 `data/groups.json`；状态页新增建组表单、动态分组筛选按钮、自建组删除入口，并去掉了页面前端与后端里
+  「只有 A/B/C 三组」的硬编码（分组顺序、筛选按钮、预算块、`需显式指定` 列表）。启动顺序改为**先叠分组、再校验渠道**。
+  新增 `test/group-crud.js`（54 项），smoke 128 / ui-e2e 59 / auth-ui 22 全部重跑通过。
 
 - 2026-09-15：渠道**连通性测试 / 获取模型列表**在鉴权失败（401/403）时，会把**上游的原话**一并显示出来（此前一律翻译成「API Key 可能无效、过期或权限不足」，把上游信息吞掉了）。这样能一眼区分是密钥**类型/格式**不对还是过期失效——例如火山方舟分别会返回 `The API key format is incorrect` 与 `the API key or AK/SK in the request is missing or invalid`。
 - 2026-09-15：管理面登录用户名由默认 `admin` 改为自定义值（见服务器 `gateway.yaml` 的 `server.auth.username`），密码仍由 `.env` 的 `GATEWAY_ADMIN_PASSWORD` 提供。改动前的 `gateway.yaml` 与 `.env` 已在服务器同目录留备份 `*.bak-20260915*`。密码值不入库、也不写进本文件。
