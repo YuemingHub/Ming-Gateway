@@ -205,3 +205,51 @@ ssh fs 'rm -f /etc/nginx/conf.d/teamo-relay.conf && nginx -t && systemctl reload
   2. 同一上游登记两条 = 状态页上会算成两个渠道的用量，这是有意的取舍（为了两个组都能用）。
 - 回滚：页面上删除 `teamo-free-a`；或 `cp /root/gw-deploy-20260929b-channels.json.bak /opt/api-gateway/data/channels.json
   && chown gwapp:gwapp /opt/api-gateway/data/channels.json && systemctl restart api-gateway`（该备份 md5 `6b96919c…`）
+
+## OpenCode Go 会话头改由网关自动补（2026-09-29 已部署到生产）
+
+背景：她问「OpenCode Go 套餐为什么用不了」。实测结论：
+
+- 套餐、key、地址都没坏。坏在**她自己在页面新建的那条 `deep`（组 B）没配 `x-opencode-session` 请求头**；
+  上游从 9 月起对这个头是硬要求，缺了直接 `400 MissingSessionID`，而 **400 不在重试清单里**
+  （`lib/config.js:142`），错误原样甩给客户，看起来就像"这家用不了"。
+- 同一家她还有第二条 `opencode-go`（组 C）配了这个头 → 一直是好的。两条并存容易误判。
+
+改动（不让她再踩第二次）：渠道和客户端都没带这个头时，网关按
+**「令牌 + 模型 + 对话开头」**派生一个稳定会话号自动补上；优先级 **渠道配的 > 客户端带的 > 自动补的**。
+域名清单新配置 `server.opencodeSessionHosts`（默认 `['opencode.ai']`，写空数组即关闭）。
+「连通测试」走真实对话那条路也补，否则没配头的渠道会被测成坏。
+
+本地测试（六个套件全绿，共 343 项）：smoke **138/138**（含新增 T14c 九项）、group-crud 54、auth-ui 22、
+prod-hardening 47、deploy-check 23、ui-e2e 59。T14c 覆盖：没配头也能打通、值是 `gw-<24hex>` 指纹、
+同一场对话多轮**同一个**会话号、换对话会变、客户端带的头原值透传、渠道配的压过自动值、
+**把规则关掉后上游确实 400（反证，证明那些 200 是网关补出来的）**、恢复后又通、无 `/models` 的渠道探测也带头。
+
+生产验收（14:34 重启后）：
+
+1. 三个文件传上去后与本地 md5 一致；`node --check` + `node gateway.js --check` 过（22 渠道 / 19 启用 / 4 令牌）
+2. **B 组 KEY 调 `mimo-v2.5`（`deep` 这条，headers 实测为空 `{}`）→ HTTP 200，由渠道 `deep` 服务**
+   —— 修复前同一请求是 400。这是本轮的关键一条
+3. C 组 KEY 调 `deepseek-flash` → 200 由 `opencode-go`（渠道显式头的路径没被改坏）
+4. A 组 KEY → 200 由 `tokenrhythm`；B 组 KEY 调 `glm-5.3-flash-free` → 200 由 `teamo-free`（本机中转那条链路重启后仍好）
+5. `data/channels.json`、`data/groups.json` 本轮**一字未写**；今天 13:48-13:49 的三次渠道组别调整是她自己在页面上做的
+   （teamo-free→B、deep→B、sensenova→B），不是我
+6. 现有站点未受影响（ymai.fun 302 / mingos.cn 200 / ymai.love 200 / api.ymai.fun 302 / healthz 200），
+   中转仍只绑回环（`0.0.0.0:8471` 计数 0），日志无新增 ERROR
+7. 延迟归因：今天上游普遍慢（5.8-12.3 秒），**不是网关**。同一模型绕过网关直连中转实测 10.6 秒，
+   同量级；网关本地处理对照组 2-3 毫秒
+
+回滚（代码回 14:34 之前，配置与数据不动）：
+
+```bash
+ssh fs 'cp /root/gw-deploy-20260929c/*.js /opt/api-gateway/lib/ && chown root:gwapp /opt/api-gateway/lib/*.js \
+  && chmod 640 /opt/api-gateway/lib/*.js && systemctl restart api-gateway'
+```
+
+### 顺带发现的一件事（未处理，等她决定）
+
+服务器 `/opt/api-gateway/.env` 里有 **474 个非 UTF-8 字节**（中文注释是 GBK 存的，分布在 9 行注释里）。
+systemd 按字节注入环境变量，**生产取值没受影响**（三把令牌与 .env 逐指纹一致）；
+但我们自己的 `loadDotEnv()` 是按 utf8 读的，这类混合编码有把下一行"吃掉"的机制性风险
+（我这轮用 utf8 正则读 `.env` 就真的读成了 undefined，白跑了两轮排查）。
+两条路：把 .env 注释转成 UTF-8（动她的密钥文件，要她点头），或把 loader 改成按 latin1/buffer 逐行切。
