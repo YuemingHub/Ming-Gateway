@@ -219,6 +219,7 @@ curl http://127.0.0.1:8787/v1/chat/completions \
 |---|---|---|
 | `server.maxBodyBytes` | `16777216`（16MB） | 单个请求体上限，超限返回 **413**。配置值会被钳制在 64KB ~ 256MB 之间。小内存机器（1C2G）别调太高：几个并发大请求就能把内存吃光。 |
 | `server.auth.trustProxy` | `false` | 是否采信 `X-Forwarded-For` 判定客户端 IP。 |
+| `server.opencodeSessionHosts` | `['opencode.ai']` | 这些域名（含子域）的渠道，若客户端和渠道都没带 `x-opencode-session`，网关自动补一个按会话稳定的值。设为空数组可彻底关掉。 |
 
 `trustProxy` 这条要特别说一下。**默认必须是 false**：
 
@@ -311,7 +312,7 @@ curl http://127.0.0.1:8787/v1/chat/completions \
   baseUrl: https://opencode.ai/zen/go/v1
   apiKey: ${OPENCODE_GO_API_KEY}
   headers:
-    x-opencode-session: api-all-gateway   # ① 少了它，上游直接 400 MissingSessionID
+    x-opencode-session: api-all-gateway   # ① 现在可以不写（网关自动补）；写了就以渠道为准
   models:                                  # ③ 只放实测能跑的，别拿 /models 全选
     [deepseek-flash, deepseek-v4-flash, deepseek-v4.1-flash, deepseek-v4-pro,
      mimo-v2.5, mimo-v2.5-pro, glm-5.3-flash, glm-5.3, glm-5.2, glm-5.1,
@@ -322,7 +323,13 @@ curl http://127.0.0.1:8787/v1/chat/completions \
 三个坑都是**真跑出来的**，不是文档抄的：
 
 1. **必须带 `x-opencode-session` 请求头**，否则一律 `400 MissingSessionID`。
-   实测：不带头 → 400；带上 → 200。用上面的 `headers` 配置即可。
+   实测：不带头 → 400；带上 → 200（2026-09-29 复测仍然如此，上游错误里直接给了文档链接）。
+   **网关现在会自动补**：这条域名的渠道如果没配这个头、客户端也没带，网关会按
+   「令牌 + 模型 + 对话开头」派生一个稳定值补上 —— 同一场对话多轮请求拿到同一个会话号，
+   换一场对话就换一个（上游要这个头就是为了按会话粘住节点）。优先级是
+   **渠道配的 > 客户端带的 > 自动补的**，所以你显式写死一个值仍然写死。
+   域名清单可配：`server.opencodeSessionHosts`（默认 `['opencode.ai']`）。
+   实测：`x-session-id`、`session-id` 同样被接受，但网关按官方文档只发 `x-opencode-session`。
 2. **模型 ID 全小写**：写作 `mimo-v2.5`，写成 `MiMo-V2.5` 会被拒（`401 not supported`）。
 3. **`/models` 会列 37 个，但只有 18 个真能跑** —— 其余要么返回 "Model is unavailable"，
    要么走的是别的协议（`/messages`、`/responses`）。所以**别在「获取模型列表」里全选**，
@@ -461,6 +468,7 @@ curl http://127.0.0.1:8787/healthz
 | T13 | 管理面登录 + 客户端令牌：未登录跳登录页、管理接口 401、密码错误/正确、会话 Cookie 的 HttpOnly+SameSite、跳转不跑站外、退出即失效、令牌三态、连续失败触发 429 |
 | T13b | 登录/配置层独立校验：正确密码通过、错密码/错用户名拒绝、对外监听且无鉴权时拒绝启动、开了登录却没密码时拒绝启动 |
 | T14 | 渠道自定义请求头转发：复刻 OpenCode Go 的 `x-opencode-session`，头真的转发出去、清空后上游确实拒绝（反证）、连通性探测同样带自定义头、**界面保存时不会把请求头冲掉** |
+| T14c | OpenCode Go 会话头自动补：渠道没配也能打通、值是 `gw-<24hex>` 指纹、同一场对话多轮稳定、换对话会变、客户端带的头原值透传、渠道配的压过自动值、**关掉规则后上游确实 400（反证）**、恢复后又通、无 `/models` 的渠道连通测试也带头 |
 | T14b | `.env` 加载：变量读入并展开、落盘保留 `${VAR}` 不固化明文、支持引号、真实环境变量优先 |
 | T15 | YAML 空值解析 + 令牌不能凭空生成：`- key:` 后面有同级兄弟键时值为 `null`（曾被误解析成对象，导致空令牌检查漏检）、更深缩进仍按嵌套解析、未展开的令牌拒绝启动且报错点名是哪个变量、非字符串令牌一律拒绝 |
 

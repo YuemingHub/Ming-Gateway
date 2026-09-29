@@ -30,6 +30,8 @@ const MOCK_PORTS = {
   noModels: MOCK_BASE + 6, // 不提供 /models
   hang: MOCK_BASE + 7,     // 挂着不返回，测探测超时
   headerRequired: MOCK_BASE + 8, // 缺少指定请求头就 400（复刻 OpenCode Go 的会话头要求）
+  autoSession: MOCK_BASE + 9,    // 同样要求会话头，但渠道里不配 —— 测网关自动补
+  autoNoModels: MOCK_BASE + 10,  // 不提供 /models 且要求会话头 —— 测「连通测试」那条路
 };
 /** 一定没人监听的端口，用来测「连不上」的快失败 */
 const DEAD_PORT = MOCK_BASE + 30;
@@ -127,6 +129,23 @@ async function main() {
       requireHeader: { name: 'x-opencode-session', value: 'gw-test-session' },
     })
   );
+  mocks.push(
+    await startMock(MOCK_PORTS.autoSession, {
+      channelId: 'auto-session',
+      mode: 'ok',
+      requireHeader: { name: 'x-opencode-session' },
+      echoHeader: 'x-opencode-session',
+    })
+  );
+  mocks.push(
+    await startMock(MOCK_PORTS.autoNoModels, {
+      channelId: 'auto-no-models',
+      mode: 'ok',
+      models: null,
+      requireHeader: { name: 'x-opencode-session' },
+      echoHeader: 'x-opencode-session',
+    })
+  );
   console.log('  mock 已就绪：' + Object.entries(MOCK_PORTS).map(([k, v]) => `${k}=${v}`).join(' '));
 
   const doc = {
@@ -138,6 +157,9 @@ async function main() {
       requestTimeoutMs: 8000,
       logLevel: 'error',
       adminToken: '',
+      // 只有这个 host 的渠道会被自动补会话头（其余 mock 都走 127.0.0.1，不受影响），
+      // 这样「自动补头」这条规则的作用面在测试里是隔离的、可反证的
+      opencodeSessionHosts: ['localhost'],
     },
     groups: {
       A: { name: '稳定开发组', desc: 'test', fallbackTo: ['B'], requireExplicit: false, cache: { enabled: true, ttlSec: 600 } },
@@ -710,6 +732,79 @@ async function main() {
   ok('连通性测试同样带上渠道自定义头', JSON.parse(r.text).ok === true, r.text.slice(0, 160));
 
   await jpost('/__gw/api/channel/delete', { id: 't-needs-header' });
+
+  // ---------------------------------------------------------------- T14c
+  console.log('\n[T14c] OpenCode Go 会话头：渠道没配时网关自动补（同会话稳定，且能反证）');
+  const autoChannel = {
+    id: 't-auto-session', name: '自动会话头渠道', group: 'A', provider: 'openai',
+    baseUrl: `http://localhost:${MOCK_PORTS.autoSession}/v1`, apiKey: 'k',
+    models: ['auto-session-chat'], headers: {}, priority: 1,
+  };
+  r = await jpost('/__gw/api/channel/save', { channel: autoChannel });
+  ok('新建一条「没配会话头」的渠道', JSON.parse(r.text).ok === true, r.text.slice(0, 140));
+
+  const ask = (firstMsg, extra, hdrs) =>
+    request(GW_PORT, '/v1/chat/completions', {
+      headers: Object.assign({ 'content-type': 'application/json' }, hdrs || {}),
+      body: JSON.stringify({
+        model: 'auto-session-chat',
+        messages: [{ role: 'user', content: firstMsg }].concat(extra || []),
+      }),
+    });
+  const sessOf = (text) => {
+    try {
+      const m = String(JSON.parse(text).choices[0].message.content).match(/#hdr=(.*)$/);
+      return m ? m[1] : '';
+    } catch (_) {
+      return '';
+    }
+  };
+
+  const CONV = '这一段是固定开场白，用来当会话指纹';
+  const r1 = await ask(CONV);
+  const s1 = sessOf(r1.text);
+  ok('渠道没配会话头也能打通（网关自动补，否则上游 400）', r1.status === 200, `${r1.status} ${r1.text.slice(0, 140)}`);
+  ok('自动补的值是指纹形状 gw-<24 位十六进制>', /^gw-[0-9a-f]{24}$/.test(s1), s1);
+
+  const r2 = await ask(CONV, [{ role: 'user', content: '第二轮 ' + Date.now() }]);
+  ok('同一场对话（开头不变）两轮拿到同一个会话号 —— 上游才认得出是同一会话', sessOf(r2.text) === s1, `${s1} vs ${sessOf(r2.text)}`);
+
+  const r3 = await ask(CONV + '｜换了开头');
+  ok('换一场对话就会话号跟着变（不是一路写死到底）', sessOf(r3.text) !== s1 && !!sessOf(r3.text), sessOf(r3.text));
+
+  const r4 = await ask(CONV, [{ role: 'user', content: '客户端优先验证 ' + Date.now() }], { 'x-opencode-session': 'client-abc' });
+  ok('客户端自己带了会话头时原值透传，网关不覆盖', sessOf(r4.text) === 'client-abc', sessOf(r4.text));
+
+  r = await jpost('/__gw/api/channel/save', {
+    channel: Object.assign({}, autoChannel, { headers: { 'x-opencode-session': 'channel-xyz' } }),
+  });
+  const r5 = await ask(CONV, [{ role: 'user', content: '渠道优先验证 ' + Date.now() }]);
+  ok('渠道里显式配了会话头时以渠道为准（压过自动值与客户端值）', sessOf(r5.text) === 'channel-xyz', sessOf(r5.text));
+
+  // 反证：把这条规则关掉，同一套请求必须被上游拒掉。
+  // 没有这一步，前面所有「200」都可能只是上游本来就不挑。
+  // 先把渠道自己那份自定义头清掉 —— 否则渠道本身就带着值，这一关测不到「自动补」那一层。
+  await jpost('/__gw/api/channel/save', { channel: Object.assign({}, autoChannel, { headers: {} }) });
+  const savedHosts = gw.config.server.opencodeSessionHosts;
+  gw.config.server.opencodeSessionHosts = [];
+  const r6 = await ask(CONV + '｜反证' + Date.now());
+  ok('关掉规则后同一请求确实失败（证明那几次 200 是网关补头补出来的）', r6.status >= 400, `实际 ${r6.status} ${r6.text.slice(0, 120)}`);
+  gw.config.server.opencodeSessionHosts = savedHosts;
+  const r7 = await ask(CONV + '｜反证恢复' + Date.now());
+  ok('恢复配置后又能通（配置项是真生效的，不是摆设）', r7.status === 200, `${r7.status} ${r7.text.slice(0, 120)}`);
+
+  // 连通性探测也必须带上自动头：这家不提供 /models，探测只能走真实对话
+  r = await jpost('/__gw/api/channel/test', {
+    channel: {
+      id: 't-auto-no-models', group: 'A', provider: 'openai',
+      baseUrl: `http://localhost:${MOCK_PORTS.autoNoModels}/v1`, apiKey: 'k',
+      models: ['auto-nm-chat'], headers: {},
+    },
+  });
+  const tAuto = JSON.parse(r.text);
+  ok('连通测试走真实对话时也补上了会话头（没配头也能测通）', tAuto.ok === true && tAuto.via === 'POST /chat/completions', JSON.stringify(tAuto).slice(0, 180));
+
+  await jpost('/__gw/api/channel/delete', { id: 't-auto-session' });
 
   console.log('\n[T14b] .env 加载（真实密钥不进 gateway.yaml）');
   const envDir = path.join(__dirname, '.envtest');

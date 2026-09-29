@@ -29,6 +29,9 @@ function startMock(port, opts) {
       // 用来验证「渠道里配的自定义 headers 有没有真的转发到上游」。
       // 形如 { name: 'x-opencode-session', value: 'abc' }（value 省略则只校验存在性）
       requireHeader: null,
+      // 把收到的这个请求头原值拼进回答内容里，用于断言「网关到底发了什么值」
+      // （只校验存在性时看不出值是每次都变还是稳定，必须回显才测得到会话指纹）
+      echoHeader: null,
     },
     opts || {}
   );
@@ -113,7 +116,8 @@ function startMock(port, opts) {
         } catch (_) {}
 
         const isStream = !!parsed.stream;
-        const content = `MOCK:${o.channelId}`;
+        const echoed = o.echoHeader ? req.headers[String(o.echoHeader).toLowerCase()] : null;
+        const content = `MOCK:${o.channelId}` + (echoed != null ? `#hdr=${echoed}` : '');
 
         if (isStream) {
           res.writeHead(200, {
