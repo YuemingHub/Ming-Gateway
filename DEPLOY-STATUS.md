@@ -342,3 +342,32 @@ systemd 按字节注入环境变量，**生产取值没受影响**（三把令�
    只对"上游返回 529 且同组有第二家供同名模型"的场景有用；改的是一行配置，可回滚
 3. 把 `requestTimeoutMs` 从 120s 往下调（如 60s）—— 让"卡死"早点变成"报错"，但她那种 30-40 秒的正常长回答会被误杀，**不建议**
 4. 网关转发前把上游不接受的 `reasoning_effort` 归一化/剔除（治 sensenova 那 4 条 400），属于改代码，要配测试
+
+## 2026-09-29 20:30 · 当场把 B 组 `deep` 的 11 个模型逐个真打了一遍（回答"现在到底还能不能用"）
+
+| 模型 | 结果 | 耗时 |
+|---|---|---|
+| `deepseek-flash` | ✓ 200 | 2.5s |
+| `deepseek-v4.1-flash` | ✓ 200 | 2.0s |
+| `mimo-v2.5` | ✓ 200 | 6.3s |
+| `glm-5.3-flash` | ✓ 200 | 1.4s |
+| `mimo-v2.6-flash` | ✓ 200 | 2.7s |
+| `hy3` | ✓ 200 | 2.5s |
+| `qwen3.8-flash` | ✓ 200 | 5.0s |
+| `space-bunny-free` | ✓ 200 | 1.2s |
+| `mimo-v2.6-pro` | ✓ 200 | 3.0s |
+| `kimi-k3` | ✓ 200 | 10.2s |
+| `muse-spark-1.3-contributor` | ✗ **必失败** 400 | 0.4s |
+
+`muse-spark-1.3-contributor` 的原话（连打 3 次一字不差，与网关无关）：
+
+```
+This Go model trains on request data. Allow paid endpoints that train on request data
+in your workspace's Privacy settings to use it.
+```
+
+- 这是 **OpenCode 工作区的隐私开关**没打开导致的，网关侧无解：我试过自己塞 `x-opencode-allow-training: true`
+  和 body 里 `allow_training: true`，两次都被原样拒绝（上游不认客户端传的，只认它自家设置）。
+- 两条路：去 OpenCode 后台 Privacy 里勾「允许会使用请求数据训练的端点」——**但这意味着她的请求内容会被拿去训练**；
+  或者把 `muse-spark-1.3-contributor` 从这个渠道的模型清单里删掉，眼不见心不烦。我倾向后者，等她定。
+- 顺带确认：会话头那类 `MissingSessionID 400` 在这一轮 11 次里 **0 出现**，修复确实生效了。
