@@ -10,6 +10,7 @@
     "start": "node gateway.js",
     "check": "node gateway.js --check",
     "test": "node test/smoke.js",
+    "test:errors": "node test/error-sanitize.js",
     "test:ui": "node test/ui-e2e.js",
     "demo": "node scripts/demo.js",
     "test:harden": "node test/prod-hardening.js",
